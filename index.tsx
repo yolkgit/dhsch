@@ -382,7 +382,7 @@ const AVAILABLE_COLORS = [
 ];
 
 // 하나의 달력에서 시작일~종료일 범위를 선택하는 컴포넌트
-const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void; onComplete?: () => void }> = ({ startDate, endDate, onChange, onComplete }) => {
+const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void; onComplete?: () => void; single?: boolean }> = ({ startDate, endDate, onChange, onComplete, single }) => {
     const [viewDate, setViewDate] = useState(() => {
         const d = startDate ? new Date(startDate) : new Date();
         return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -409,6 +409,12 @@ const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: 
     for (let d = 1; d <= daysInMonth; d++) cells.push(formatDate(new Date(year, month, d)));
 
     const handleDayClick = (dstr: string) => {
+        if (single) {
+            // 단일 날짜 선택 모드: 한 번 클릭으로 완료
+            onChange(dstr, dstr);
+            if (onComplete) onComplete();
+            return;
+        }
         if (!selecting || dstr < startDate) {
             // 새 범위 시작 (종료일 선택 중에 시작일보다 앞을 클릭해도 새로 시작)
             onChange(dstr, dstr);
@@ -464,11 +470,13 @@ const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: 
                 })}
             </div>
             <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-center text-[11px] font-bold text-gray-600 dark:text-gray-300">
-                {selecting
-                    ? <span className="text-indigo-500 dark:text-indigo-400 animate-pulse">종료일을 선택하세요 ({startDate} ~ )</span>
-                    : startDate && endDate
-                        ? <span>{startDate} ~ {endDate} · <span className="text-indigo-600 dark:text-indigo-400">{getDaysBetween(new Date(startDate), new Date(endDate))}일</span></span>
-                        : <span>시작일을 선택하세요</span>}
+                {single
+                    ? <span>이동할 날짜를 선택하세요</span>
+                    : selecting
+                        ? <span className="text-indigo-500 dark:text-indigo-400 animate-pulse">종료일을 선택하세요 ({startDate} ~ )</span>
+                        : startDate && endDate
+                            ? <span>{startDate} ~ {endDate} · <span className="text-indigo-600 dark:text-indigo-400">{getDaysBetween(new Date(startDate), new Date(endDate))}일</span></span>
+                            : <span>시작일을 선택하세요</span>}
             </div>
         </div>
     );
@@ -748,6 +756,15 @@ const Header: FC<{
     const handleDateShift = (days: number) => setViewStartDate(currentDate => addDays(currentDate, days));
     const goToToday = () => { const today = new Date(); today.setDate(today.getDate() - 2); today.setHours(0,0,0,0); setViewStartDate(today); }
 
+    // 달력 아이콘으로 특정 날짜로 바로 이동 (오늘 버튼과 동일하게 선택일이 앞에서 3번째 칸에 오도록 -2일)
+    const [isJumpOpen, setIsJumpOpen] = useState(false);
+    const jumpAnchor = formatDate(addDays(viewStartDate, 2));
+    const handleJump = (dstr: string) => {
+        const d = new Date(dstr);
+        d.setHours(0, 0, 0, 0);
+        setViewStartDate(addDays(d, -2));
+    };
+
     return (
         <header className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl p-3 sm:p-5 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 transition-colors duration-300">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
@@ -790,6 +807,17 @@ const Header: FC<{
                     <div className="flex items-center justify-between sm:justify-start gap-3 bg-white/50 dark:bg-gray-800/40 rounded-2xl p-1.5 border border-gray-200 dark:border-gray-700/50 transition-colors">
                         <button onClick={() => handleDateShift(-7)} className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all text-gray-400 hover:text-gray-900 dark:hover:text-white active:scale-90"><ChevronLeftIcon className="h-5 w-5" /></button>
                         <button onClick={goToToday} className="flex items-center gap-2.5 px-5 py-2.5 text-xs font-black uppercase tracking-widest rounded-xl bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white shadow-sm">오늘</button>
+                        <div className="relative">
+                            <button onClick={() => setIsJumpOpen(v => !v)} title="특정 날짜로 이동" className={`p-2.5 rounded-xl transition-all active:scale-90 ${isJumpOpen ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}><CalendarIcon className="h-5 w-5" /></button>
+                            {isJumpOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setIsJumpOpen(false)} />
+                                    <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700">
+                                        <RangeCalendar single startDate={jumpAnchor} endDate={jumpAnchor} onChange={(s) => handleJump(s)} onComplete={() => setIsJumpOpen(false)} />
+                                    </div>
+                                </>
+                            )}
+                        </div>
                         <button onClick={() => handleDateShift(7)} className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all text-gray-400 hover:text-gray-900 dark:hover:text-white active:scale-90"><ChevronRightIcon className="h-5 w-5" /></button>
                     </div>
                 </div>
