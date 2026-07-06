@@ -382,7 +382,7 @@ const AVAILABLE_COLORS = [
 ];
 
 // 하나의 달력에서 시작일~종료일 범위를 선택하는 컴포넌트
-const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void }> = ({ startDate, endDate, onChange }) => {
+const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void; onComplete?: () => void }> = ({ startDate, endDate, onChange, onComplete }) => {
     const [viewDate, setViewDate] = useState(() => {
         const d = startDate ? new Date(startDate) : new Date();
         return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -417,6 +417,7 @@ const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: 
             onChange(startDate, dstr);
             setSelecting(false);
             setHoverDate(null);
+            if (onComplete) onComplete();
         }
     };
 
@@ -492,11 +493,13 @@ const TaskModal: FC<{
     const [description, setDescription] = useState('');
     const [color, setColor] = useState('bg-blue-500'); // 기본값 파랑
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
     const prevIsOpenRef = useRef(false);
 
     useEffect(() => {
         if (isOpen && !prevIsOpenRef.current) {
+            setIsCalendarOpen(false);
             if (task) {
                 setName(task.name);
                 setEmployeeId(task.employeeId);
@@ -616,10 +619,18 @@ const TaskModal: FC<{
                     </div>
                 </div>
 
-                {/* 4. 날짜 및 기간 — 달력에서 시작일·종료일 범위 선택, 기간 입력과 상호 연동 */}
+                {/* 4. 날짜 및 기간 — 달력 아이콘 클릭 시 범위 선택 달력 표시 */}
                 <div className="space-y-1">
-                    <label className="text-xs text-gray-500 font-bold ml-1">일정 (시작일 클릭 후 종료일 클릭)</label>
-                    <RangeCalendar startDate={startDate} endDate={endDate} onChange={handleRangeChange} />
+                    <label className="text-xs text-gray-500 font-bold ml-1">일정</label>
+                    <button type="button" onClick={() => setIsCalendarOpen(v => !v)} className="w-full flex items-center gap-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none transition-all hover:border-indigo-400 dark:hover:border-indigo-500">
+                        <CalendarIcon className={`h-5 w-5 flex-shrink-0 ${isCalendarOpen ? 'text-indigo-500' : 'text-gray-400'}`} />
+                        <span className="text-gray-900 dark:text-white text-sm font-bold">{startDate} ~ {endDate}</span>
+                        <span className="ml-auto text-xs font-black text-indigo-600 dark:text-indigo-400">{duration}일</span>
+                        <ChevronDownIcon className={`h-4 w-4 text-gray-400 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isCalendarOpen && (
+                        <RangeCalendar startDate={startDate} endDate={endDate} onChange={handleRangeChange} onComplete={() => setIsCalendarOpen(false)} />
+                    )}
                 </div>
                 <div className="space-y-1">
                      <label className="text-xs text-gray-500 font-bold ml-1">기간 (일) — 직접 입력하면 종료일이 자동 계산됩니다</label>
