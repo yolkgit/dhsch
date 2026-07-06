@@ -206,7 +206,11 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
     const handleAddEmp = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newEmpName.trim() && newEmpDeptId) {
+        if (!newEmpDeptId) {
+            alert('부서를 먼저 추가한 뒤 직원을 등록하세요.');
+            return;
+        }
+        if (newEmpName.trim()) {
             onAddEmployee(newEmpName.trim(), newEmpDeptId);
             setNewEmpName('');
         }
@@ -1258,6 +1262,7 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; startD
         try { await addEmployee(name, deptId); if (!isOnline) await loadData(); } catch(e) { console.error(e); alert('직원 추가 실패'); }
     };
     const handleDeleteEmployee = async (id: string) => {
+        if (!window.confirm('직원을 삭제하시겠습니까? 담당 중인 태스크는 담당자 없음 상태로 남습니다.')) return;
         try { await deleteEmployee(id); if (!isOnline) await loadData(); } catch(e) { console.error(e); alert('직원 삭제 실패'); }
     };
 

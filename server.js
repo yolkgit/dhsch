@@ -99,19 +99,19 @@ app.delete('/api/tasks/:id', async (req, res) => {
 });
 app.post('/api/departments', async (req, res) => {
   const d = await prisma.department.create({ data: { name: req.body.name } });
-  res.json(d);
+  broadcastUpdate(); res.json(d);
 });
 app.delete('/api/departments/:id', async (req, res) => {
   await prisma.department.delete({ where: { id: req.params.id } });
-  res.json({success:true});
+  broadcastUpdate(); res.json({success:true});
 });
 app.post('/api/employees', async (req, res) => {
   const e = await prisma.employee.create({ data: { name: req.body.name, departmentId: req.body.departmentId } });
-  res.json(e);
+  broadcastUpdate(); res.json(e);
 });
 app.delete('/api/employees/:id', async (req, res) => {
   await prisma.employee.delete({ where: { id: req.params.id } });
-  res.json({success:true});
+  broadcastUpdate(); res.json({success:true});
 });
 
 // [Frontend Serving]
