@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  tasks     Task[]
+
+  @@map("projects")
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model Employee {
+  id           String      @id @default(uuid())
+  name         String
+  departmentId String?     @map("department_id")
+  department   Department? @relation(fields: [departmentId], references: [id])
+  tasks        Task[]
+
+  @@index([departmentId], map: "employees_department_id_fkey")
+  @@map("employees")
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  projectId   String?   @map("project_id")
+  name        String
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  color       String?   @default("bg-blue-500")
+  employeeId  String?   @map("employee_id")
+  progress    Int       @default(0)
+  description String?   @db.Text
+  position    Int       @default(0)
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId], map: "tasks_employee_id_fkey")
+  @@index([projectId], map: "tasks_project_id_fkey")
+  @@map("tasks")
+}
+
+model SystemSetting {
+  key   String @id
+  value Json
+
+  @@map("system_settings")
+}
