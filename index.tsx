@@ -27,12 +27,12 @@ interface UISettings {
 }
 
 const DEFAULT_SETTINGS: UISettings = {
-    dayWidth: 45,
-    rowHeight: 54,
-    projectBarHeight: 40,
-    taskBarHeight: 32,
+    dayWidth: 30,
+    rowHeight: 35,
+    projectBarHeight: 36,
+    taskBarHeight: 26,
     fontSize: 13,
-    headerFontSize: 10,
+    headerFontSize: 12,
 };
 
 const DEFAULT_COLUMN_WIDTHS = {
