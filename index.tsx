@@ -395,6 +395,7 @@ const TaskModal: FC<{
     const [employeeId, setEmployeeId] = useState('');
     const [selectedDeptId, setSelectedDeptId] = useState('');
     const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [duration, setDuration] = useState(1);
     const [description, setDescription] = useState('');
     const [color, setColor] = useState('bg-blue-500'); // 기본값 파랑
@@ -412,6 +413,7 @@ const TaskModal: FC<{
                 else if (departments.length > 0) setSelectedDeptId(departments[0].id);
 
                 setStartDate(formatDate(new Date(task.startDate)));
+                setEndDate(formatDate(new Date(task.endDate)));
                 setDuration(getDaysBetween(new Date(task.startDate), new Date(task.endDate)));
                 setDescription(task.description || '');
                 setColor(task.color || 'bg-blue-500'); // 기존 색상 불러오기
@@ -422,6 +424,7 @@ const TaskModal: FC<{
                 const defaultEmp = employees.find(e => e.departmentId === (defaultDept ? defaultDept.id : '')) || employees[0];
                 setEmployeeId(defaultEmp ? defaultEmp.id : '');
                 setStartDate(formatDate(new Date()));
+                setEndDate(formatDate(addDays(new Date(), 2)));
                 setDuration(3);
                 setDescription('');
                 setColor('bg-blue-500'); // 새 태스크 기본값
@@ -435,6 +438,29 @@ const TaskModal: FC<{
         const empsInDept = employees.filter(e => e.departmentId === newDeptId);
         if (empsInDept.length > 0) setEmployeeId(empsInDept[0].id);
         else setEmployeeId('');
+    };
+
+    // 시작일·종료일·기간 3개 값 상호 연동
+    const handleStartDateChange = (value: string) => {
+        setStartDate(value);
+        // 시작일 이동 시 기간 유지, 종료일 재계산
+        if (value) setEndDate(formatDate(addDays(new Date(value), duration - 1)));
+    };
+    const handleEndDateChange = (value: string) => {
+        if (!value) { setEndDate(value); return; }
+        if (startDate && value < startDate) {
+            // 종료일이 시작일보다 앞이면 시작일에 맞춤
+            setEndDate(startDate);
+            setDuration(1);
+            return;
+        }
+        setEndDate(value);
+        if (startDate) setDuration(getDaysBetween(new Date(startDate), new Date(value)));
+    };
+    const handleDurationChange = (value: number) => {
+        const d = Math.max(1, isNaN(value) ? 1 : value);
+        setDuration(d);
+        if (startDate) setEndDate(formatDate(addDays(new Date(startDate), d - 1)));
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -509,16 +535,20 @@ const TaskModal: FC<{
                     </div>
                 </div>
 
-                {/* 4. 날짜 및 기간 */}
+                {/* 4. 날짜 및 기간 (시작일·종료일·기간 상호 연동) */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <label className="text-xs text-gray-500 font-bold ml-1">시작일</label>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required style={{ colorScheme: 'dark' }} />
+                        <input type="date" value={startDate} onChange={e => handleStartDateChange(e.target.value)} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required style={{ colorScheme: 'dark' }} />
                     </div>
                     <div className="space-y-1">
-                         <label className="text-xs text-gray-500 font-bold ml-1">기간 (일)</label>
-                         <input type="number" min="1" value={duration} onChange={e => setDuration(parseInt(e.target.value))} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required />
+                        <label className="text-xs text-gray-500 font-bold ml-1">종료일</label>
+                        <input type="date" value={endDate} min={startDate} onChange={e => handleEndDateChange(e.target.value)} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required style={{ colorScheme: 'dark' }} />
                     </div>
+                </div>
+                <div className="space-y-1">
+                     <label className="text-xs text-gray-500 font-bold ml-1">기간 (일) — 직접 입력하면 종료일이 자동 계산됩니다</label>
+                     <input type="number" min="1" value={duration} onChange={e => handleDurationChange(parseInt(e.target.value))} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required />
                 </div>
                 
                 {/* 5. 설명 */}
