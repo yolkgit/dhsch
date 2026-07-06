@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, FC, useRef, useCallback } from 're
 import { createPortal } from 'react-dom';
 import ReactDOM from 'react-dom/client';
 import { Department, Employee, Task, Project } from './types';
-import { getProjects, getDepartments, getEmployees, addProject, updateProject, deleteProject, addTask, updateTask, deleteTask, updateProjects, updateTaskPositions, initSupabase, getSupabaseConfig, isSupabaseEnabled, subscribeToChanges, checkConnectionAndSeed, hasAdminPassword, verifyAdminPassword, setAdminPassword, isGlobalConfigured, isGlobalPassword, initSupabaseFromUrl, getShareableConfigLink, getRemoteSettings, saveRemoteSettings, addDepartment, deleteDepartment, addEmployee, deleteEmployee } from './services/apiService';
+import { getProjects, getDepartments, getEmployees, addProject, updateProject, deleteProject, addTask, updateTask, deleteTask, updateProjects, updateTaskPositions, hasAdminPassword, verifyAdminPassword, addDepartment, deleteDepartment, addEmployee, deleteEmployee } from './services/apiService';
 import { addDays, getDaysBetween, formatDate } from './utils/dateUtils';
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, FilterIcon, PlusIcon, FolderIcon, ChevronDownIcon, XMarkIcon, PencilIcon, TrashIcon, GripVerticalIcon, SunIcon, MoonIcon } from './components/icons';
 
@@ -122,7 +122,6 @@ interface SettingsModalProps {
     onClose: () => void;
     settings: UISettings;
     setSettings: (s: UISettings) => void;
-    onSaveSupabase: (url: string, key: string) => void;
     departments: Department[];
     employees: Employee[];
     onAddDepartment: (name: string) => void;
@@ -131,38 +130,18 @@ interface SettingsModalProps {
     onDeleteEmployee: (id: string) => void;
 }
 
-const SettingsModal: FC<SettingsModalProps> = ({ isOpen, onClose, settings, setSettings, onSaveSupabase, departments, employees, onAddDepartment, onDeleteDepartment, onAddEmployee, onDeleteEmployee }) => {
+const SettingsModal: FC<SettingsModalProps> = ({ isOpen, onClose, settings, setSettings, departments, employees, onAddDepartment, onDeleteDepartment, onAddEmployee, onDeleteEmployee }) => {
     const update = useCallback((key: keyof UISettings, val: any) => setSettings({ ...settings, [key]: val }), [settings, setSettings]);
-    const [sbUrl, setSbUrl] = useState('');
-    // const [sbKey, setSbKey] = useState(''); // Removed Key as usually API is just URL or token
-    const [adminPwd, setAdminPwd] = useState('');
-    const [isProtected, setIsProtected] = useState(false);
-    const [isGlobalConfig, setIsGlobalConfig] = useState(false);
-    const [isGlobalPwd, setIsGlobalPwd] = useState(false);
     const [activeTab, setActiveTab] = useState<'general' | 'data'>('general');
 
     // Data Management State
     const [newDeptName, setNewDeptName] = useState('');
     const [newEmpName, setNewEmpName] = useState('');
     const [newEmpDeptId, setNewEmpDeptId] = useState('');
-    
+
     useEffect(() => {
-        const config = getSupabaseConfig();
-        if(config) {
-            setSbUrl(config.url);
-            // setSbKey(config.key);
-        }
-        setIsProtected(hasAdminPassword());
-        setIsGlobalConfig(isGlobalConfigured());
-        setIsGlobalPwd(isGlobalPassword());
         if (departments.length > 0) setNewEmpDeptId(departments[0].id);
     }, [isOpen, departments]);
-
-    const handleSave = () => {
-        if (!isGlobalConfig) onSaveSupabase(sbUrl, ''); // Pass empty key
-        if (adminPwd && !isGlobalPwd) setAdminPassword(adminPwd);
-        onClose();
-    };
 
     const copySql = () => {
         const sql = `
@@ -246,44 +225,29 @@ CREATE TABLE IF NOT EXISTS system_settings (
                     <section className="space-y-5">
                         <h4 className="text-xs font-bold text-rose-500 dark:text-rose-400 uppercase tracking-widest border-b border-rose-500/20 dark:border-rose-400/20 pb-2">보안 설정</h4>
                         <div className="space-y-3">
-                            <p className="text-xs text-rose-600 dark:text-rose-200 leading-relaxed">설정 메뉴 접근 시 사용할 비밀번호를 설정하여 무단 변경을 방지하세요.</p>
-                            {isProtected && <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2"><span>🔒</span>현재 비밀번호가 설정되어 있습니다.</div>}
-                            {isGlobalPwd && <div className="px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 text-xs font-bold flex items-center gap-2"><span>🛡️</span>소스 코드에 의해 비밀번호가 고정되었습니다.</div>}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">관리자 비밀번호 {isProtected ? '변경' : '설정'}</label>
-                                <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)} placeholder={isGlobalPwd ? "소스 코드에서 관리됨" : (isProtected ? "새 비밀번호 (비워두면 유지)" : "비밀번호 입력")} disabled={isGlobalPwd} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-gray-900 dark:text-white text-sm focus:ring-1 focus:ring-rose-500 outline-none transition-all placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed" />
-                            </div>
+                            {hasAdminPassword() ? (
+                                <div className="px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-600 dark:text-indigo-400 text-xs font-bold flex items-center gap-2"><span>🛡️</span>관리자 비밀번호가 환경 변수(.env)로 관리됩니다.</div>
+                            ) : (
+                                <p className="text-xs text-rose-600 dark:text-rose-200 leading-relaxed">비밀번호가 설정되지 않았습니다. 서버 .env의 VITE_ADMIN_PASSWORD로 설정한 뒤 다시 빌드하세요.</p>
+                            )}
                         </div>
                     </section>
 
                     <section className="space-y-5">
                         <h4 className="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20 dark:border-indigo-400/20 pb-2">MySQL API 서버 연결</h4>
                         <div className="space-y-3">
-                            {isGlobalConfig ? (
-                                <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" /></svg>
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-gray-800 dark:text-gray-200">환경 변수로 연결됨</p>
-                                            <p className="text-xs text-gray-500">시스템 환경 변수(.env) 설정을 사용 중입니다.</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={copySql} className="w-full py-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-bold rounded-lg transition-all border border-gray-300 dark:border-gray-600">MySQL 초기 설정 스크립트 복사</button>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                                        <p className="text-xs text-indigo-700 dark:text-indigo-200 leading-relaxed"><strong className="text-indigo-900 dark:text-white">API 서버</strong>를 연결하면 MySQL 데이터베이스와 실시간(폴링)으로 연동됩니다.</p>
+                            <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" /></svg>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 mb-1">API Base URL</label>
-                                        <input type="text" value={sbUrl} onChange={e => setSbUrl(e.target.value)} placeholder="http://localhost:3000/api" className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-gray-900 dark:text-white text-xs focus:ring-1 focus:ring-indigo-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed" />
+                                        <p className="text-sm font-bold text-gray-800 dark:text-gray-200">환경 변수로 연결됨</p>
+                                        <p className="text-xs text-gray-500">시스템 환경 변수(.env) 설정을 사용 중입니다.</p>
                                     </div>
-                                    <button onClick={copySql} className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 underline font-bold">MySQL 테이블 생성 SQL 복사</button>
-                                </>
-                            )}
+                                </div>
+                                <button onClick={copySql} className="w-full py-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-bold rounded-lg transition-all border border-gray-300 dark:border-gray-600">MySQL 초기 설정 스크립트 복사</button>
+                            </div>
                         </div>
                     </section>
 
@@ -301,7 +265,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
                         <SliderField label="제목줄 글자 크기" value={settings.headerFontSize} min={8} max={22} onChange={(v) => update('headerFontSize', v)} colorClass="text-amber-600 dark:text-amber-300" />
                     </section>
                     
-                    <button onClick={handleSave} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-xl shadow-indigo-500/20 active:scale-95">설정 저장 및 연결</button>
+                    <button onClick={onClose} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-xl shadow-indigo-500/20 active:scale-95">닫기</button>
                     </>
                 ) : (
                     <>
@@ -1096,7 +1060,7 @@ const App: FC = () => {
     const [taskModal, setTaskModal] = useState<{ open: boolean; task: Task | null; projectId: string | null }>({ open: false, task: null, projectId: null });
     const [confirmModal, setConfirmModal] = useState<{ open: boolean; type: 'project' | 'task'; id: string; subId?: string; title: string; message: string }>({ open: false, type: 'project', id: '', title: '', message: '' });
     
-    const [isOnline, setIsOnline] = useState(isSupabaseEnabled());
+    const [isOnline, setIsOnline] = useState(true);
 
     // Calculate dynamic number of days based on width
     useEffect(() => {
@@ -1156,24 +1120,16 @@ const App: FC = () => {
 
             setExpandedProjects(prev => {
                 if (Object.keys(prev).length === 0) {
-                    return Object.fromEntries(loadedProjects.map(p => [p.id, true]));
+                    return Object.fromEntries(loadedProjects.map((p: any) => [p.id, true]));
                 }
                 return prev;
             });
-            // Load remote UI settings if connected
-            const remoteSettings = await getRemoteSettings('ui_settings');
-            if (remoteSettings) {
-                setUiSettings(remoteSettings);
-            }
-            // Load remote column widths if connected
-            const remoteColumnWidths = await getRemoteSettings('column_widths');
-            if (remoteColumnWidths) {
-                setColumnWidths(remoteColumnWidths);
-            }
+            setIsOnline(true);
         } catch (e: any) {
             console.error("Failed to load data", e);
             const msg = e && e.message ? e.message : (typeof e === 'string' ? e : JSON.stringify(e));
             setErrorMsg(msg || "데이터를 불러오는 중 알 수 없는 오류가 발생했습니다.");
+            setIsOnline(false);
         } finally { setIsLoading(false); }
     }, []);
 
@@ -1196,25 +1152,10 @@ const App: FC = () => {
     // --- [여기까지] ---
 
 
-    // Check for URL config on mount
+    // Initial load on mount
     useEffect(() => {
-        const hasUrlConfig = initSupabaseFromUrl();
-        if (hasUrlConfig) {
-            setIsOnline(true);
-        }
         loadData();
     }, [loadData]);
-
-    // Realtime Subscription (Polling)
-    useEffect(() => {
-        if (isOnline) {
-            const unsubscribe = subscribeToChanges(() => {
-                console.log("Realtime (Polling) update...");
-                loadData();
-            });
-            return () => { unsubscribe(); };
-        }
-    }, [isOnline, loadData]);
 
     const { employeeMap, departmentMap } = useMemo(() => {
         const eMap = new Map(employees.map(e => [e.id, e]));
@@ -1243,54 +1184,11 @@ const App: FC = () => {
 
     useEffect(() => {
         localStorage.setItem(GANTT_COLUMN_WIDTHS_KEY, JSON.stringify(columnWidths));
-        
-        // Debounce save to server
-        const timer = setTimeout(() => {
-            if (isOnline) {
-                saveRemoteSettings('column_widths', columnWidths);
-            }
-        }, 1000); 
-        return () => clearTimeout(timer);
-    }, [columnWidths, isOnline]);
+    }, [columnWidths]);
 
     // Handlers
-    const handleSaveSupabase = async (url: string, key: string) => {
-        setIsLoading(true);
-        setErrorMsg(null);
-        initSupabase(url, key);
-        setIsOnline(isSupabaseEnabled());
-        
-        try {
-            await checkConnectionAndSeed();
-            // Connected successfully: Save current UI settings to DB as baseline if valid
-            if (uiSettings) {
-                await saveRemoteSettings('ui_settings', uiSettings);
-            }
-            if (columnWidths) {
-                await saveRemoteSettings('column_widths', columnWidths);
-            }
-            await loadData(); // Reload data immediately
-        } catch (e: any) {
-            console.error(e);
-            if (e.message === 'TABLES_MISSING') {
-                alert('데이터베이스 테이블이 없습니다. 설정 메뉴의 "MySQL SQL 복사"를 눌러 데이터베이스 관리 도구에서 실행해주세요.');
-                setIsSettingsOpen(true);
-            } else {
-                const msg = e && e.message ? e.message : JSON.stringify(e);
-                alert('데이터베이스 연결 실패: ' + msg);
-                setErrorMsg(msg);
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    // Auto-save UI settings to DB if online
     const handleUiSettingsChange = (newSettings: UISettings) => {
         setUiSettings(newSettings);
-        if (isOnline) {
-            saveRemoteSettings('ui_settings', newSettings);
-        }
     };
 
     const handleProjectSubmit = async (name: string) => {
@@ -1499,8 +1397,7 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; startD
                 isOpen={isSettingsOpen} 
                 onClose={() => setIsSettingsOpen(false)} 
                 settings={uiSettings} 
-                setSettings={handleUiSettingsChange} 
-                onSaveSupabase={handleSaveSupabase}
+                setSettings={handleUiSettingsChange}
                 departments={departments}
                 employees={employees}
                 onAddDepartment={handleAddDepartment}

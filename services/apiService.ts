@@ -29,18 +29,7 @@ export const deleteDepartment = async (id: string) => fetch(`${API_BASE_URL}/dep
 export const addEmployee = async (name: string, dId: string) => (await fetch(`${API_BASE_URL}/employees`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, departmentId: dId}) })).json();
 export const deleteEmployee = async (id: string) => fetch(`${API_BASE_URL}/employees/${id}`, { method: 'DELETE' });
 
-// Dummies
-export const initSupabase = () => {};
-export const getSupabaseConfig = () => ({ url: '', key: '' });
-export const isSupabaseEnabled = () => true;
-export const subscribeToChanges = (cb: any) => () => {};
-export const checkConnectionAndSeed = async () => {};
-export const hasAdminPassword = () => false;
-export const verifyAdminPassword = () => true;
-export const setAdminPassword = () => {};
-export const isGlobalConfigured = () => true;
-export const isGlobalPassword = () => false;
-export const initSupabaseFromUrl = () => false;
-export const getShareableConfigLink = () => '';
-export const getRemoteSettings = async () => null;
-export const saveRemoteSettings = async () => {};
+// 관리자 비밀번호 (.env의 VITE_ADMIN_PASSWORD, 빌드 시점에 번들에 포함됨)
+const ADMIN_PASSWORD: string = import.meta.env.VITE_ADMIN_PASSWORD || '';
+export const hasAdminPassword = () => ADMIN_PASSWORD !== '';
+export const verifyAdminPassword = (password: string) => password === ADMIN_PASSWORD;
