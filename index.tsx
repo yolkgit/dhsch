@@ -381,6 +381,98 @@ const AVAILABLE_COLORS = [
     'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-gray-500'
 ];
 
+// 하나의 달력에서 시작일~종료일 범위를 선택하는 컴포넌트
+const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void }> = ({ startDate, endDate, onChange }) => {
+    const [viewDate, setViewDate] = useState(() => {
+        const d = startDate ? new Date(startDate) : new Date();
+        return new Date(d.getFullYear(), d.getMonth(), 1);
+    });
+    const [selecting, setSelecting] = useState(false); // true = 종료일 선택 대기 중
+    const [hoverDate, setHoverDate] = useState<string | null>(null);
+
+    // 시작일이 바뀌면 해당 월로 이동 (모달 재사용 시 이전 태스크 월이 남는 것 방지)
+    useEffect(() => {
+        if (startDate) {
+            const d = new Date(startDate);
+            setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+        }
+    }, [startDate]);
+
+    const todayStr = formatDate(new Date());
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDayOffset = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells: (string | null)[] = [];
+    for (let i = 0; i < firstDayOffset; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(formatDate(new Date(year, month, d)));
+
+    const handleDayClick = (dstr: string) => {
+        if (!selecting || dstr < startDate) {
+            // 새 범위 시작 (종료일 선택 중에 시작일보다 앞을 클릭해도 새로 시작)
+            onChange(dstr, dstr);
+            setSelecting(true);
+        } else {
+            onChange(startDate, dstr);
+            setSelecting(false);
+            setHoverDate(null);
+        }
+    };
+
+    // 종료일 선택 중에는 호버 위치까지를 미리보기 범위로 표시
+    const rangeEnd = selecting ? (hoverDate && hoverDate > startDate ? hoverDate : startDate) : endDate;
+    const isInRange = (dstr: string) => !!startDate && dstr >= startDate && dstr <= rangeEnd;
+    const isEndpoint = (dstr: string) => dstr === startDate || dstr === rangeEnd;
+
+    const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+    return (
+        <div className="bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 select-none">
+            <div className="flex items-center justify-between mb-2">
+                <button type="button" onClick={() => setViewDate(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-colors"><ChevronLeftIcon className="h-4 w-4" /></button>
+                <span className="text-sm font-black text-gray-800 dark:text-gray-100">{year}년 {month + 1}월</span>
+                <button type="button" onClick={() => setViewDate(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-colors"><ChevronRightIcon className="h-4 w-4" /></button>
+            </div>
+            <div className="grid grid-cols-7 mb-1">
+                {WEEKDAYS.map((w, i) => (
+                    <div key={w} className={`h-6 flex items-center justify-center text-[10px] font-bold ${i === 0 ? 'text-rose-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{w}</div>
+                ))}
+            </div>
+            <div className="grid grid-cols-7 gap-y-0.5" onMouseLeave={() => setHoverDate(null)}>
+                {cells.map((dstr, i) => {
+                    if (!dstr) return <div key={`empty-${i}`} />;
+                    const endpoint = isEndpoint(dstr);
+                    const inRange = isInRange(dstr);
+                    const isToday = dstr === todayStr;
+                    return (
+                        <button
+                            type="button"
+                            key={dstr}
+                            onClick={() => handleDayClick(dstr)}
+                            onMouseEnter={() => selecting && setHoverDate(dstr)}
+                            className={`h-8 flex items-center justify-center text-xs transition-colors cursor-pointer
+                                ${endpoint ? 'bg-indigo-600 text-white font-black rounded-lg shadow-md shadow-indigo-500/30'
+                                    : inRange ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-bold'
+                                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg'}
+                                ${isToday && !endpoint ? 'ring-1 ring-inset ring-indigo-400 rounded-lg font-black' : ''}`}
+                        >
+                            {parseInt(dstr.slice(8))}
+                        </button>
+                    );
+                })}
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-center text-[11px] font-bold text-gray-600 dark:text-gray-300">
+                {selecting
+                    ? <span className="text-indigo-500 dark:text-indigo-400 animate-pulse">종료일을 선택하세요 ({startDate} ~ )</span>
+                    : startDate && endDate
+                        ? <span>{startDate} ~ {endDate} · <span className="text-indigo-600 dark:text-indigo-400">{getDaysBetween(new Date(startDate), new Date(endDate))}일</span></span>
+                        : <span>시작일을 선택하세요</span>}
+            </div>
+        </div>
+    );
+};
+
 const TaskModal: FC<{
     isOpen: boolean;
     onClose: () => void;
@@ -440,22 +532,11 @@ const TaskModal: FC<{
         else setEmployeeId('');
     };
 
-    // 시작일·종료일·기간 3개 값 상호 연동
-    const handleStartDateChange = (value: string) => {
-        setStartDate(value);
-        // 시작일 이동 시 기간 유지, 종료일 재계산
-        if (value) setEndDate(formatDate(addDays(new Date(value), duration - 1)));
-    };
-    const handleEndDateChange = (value: string) => {
-        if (!value) { setEndDate(value); return; }
-        if (startDate && value < startDate) {
-            // 종료일이 시작일보다 앞이면 시작일에 맞춤
-            setEndDate(startDate);
-            setDuration(1);
-            return;
-        }
-        setEndDate(value);
-        if (startDate) setDuration(getDaysBetween(new Date(startDate), new Date(value)));
+    // 달력에서 범위 선택 → 기간 자동 계산 / 기간 입력 → 종료일 자동 계산
+    const handleRangeChange = (start: string, end: string) => {
+        setStartDate(start);
+        setEndDate(end);
+        setDuration(getDaysBetween(new Date(start), new Date(end)));
     };
     const handleDurationChange = (value: number) => {
         const d = Math.max(1, isNaN(value) ? 1 : value);
@@ -535,16 +616,10 @@ const TaskModal: FC<{
                     </div>
                 </div>
 
-                {/* 4. 날짜 및 기간 (시작일·종료일·기간 상호 연동) */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                        <label className="text-xs text-gray-500 font-bold ml-1">시작일</label>
-                        <input type="date" value={startDate} onChange={e => handleStartDateChange(e.target.value)} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required style={{ colorScheme: 'dark' }} />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-xs text-gray-500 font-bold ml-1">종료일</label>
-                        <input type="date" value={endDate} min={startDate} onChange={e => handleEndDateChange(e.target.value)} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required style={{ colorScheme: 'dark' }} />
-                    </div>
+                {/* 4. 날짜 및 기간 — 달력에서 시작일·종료일 범위 선택, 기간 입력과 상호 연동 */}
+                <div className="space-y-1">
+                    <label className="text-xs text-gray-500 font-bold ml-1">일정 (시작일 클릭 후 종료일 클릭)</label>
+                    <RangeCalendar startDate={startDate} endDate={endDate} onChange={handleRangeChange} />
                 </div>
                 <div className="space-y-1">
                      <label className="text-xs text-gray-500 font-bold ml-1">기간 (일) — 직접 입력하면 종료일이 자동 계산됩니다</label>
