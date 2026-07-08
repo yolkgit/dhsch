@@ -67,7 +67,7 @@ app.post('/api/projects', async (req, res) => {
   try {
     // 새 프로젝트는 맨 뒤 순서로 추가
     const maxPos = await prisma.project.aggregate({ _max: { position: true } });
-    const p = await prisma.project.create({ data: { name: req.body.name, position: (maxPos._max.position ?? -1) + 1 } });
+    const p = await prisma.project.create({ data: { name: req.body.name, color: req.body.color, position: (maxPos._max.position ?? -1) + 1 } });
     broadcastUpdate(); res.json(p);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -94,7 +94,7 @@ app.put('/api/projects/reorder', async (req, res) => {
 });
 app.put('/api/projects/:id', async (req, res) => {
     try {
-        const p = await prisma.project.update({ where: { id: req.params.id }, data: { name: req.body.name } });
+        const p = await prisma.project.update({ where: { id: req.params.id }, data: { name: req.body.name, color: req.body.color } });
         broadcastUpdate(); res.json(p);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

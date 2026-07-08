@@ -10,6 +10,7 @@ datasource db {
 model Project {
   id        String   @id @default(uuid())
   name      String
+  color     String?  @default("bg-indigo-500")
   position  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
   tasks     Task[]

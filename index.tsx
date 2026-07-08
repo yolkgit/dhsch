@@ -375,12 +375,23 @@ const AuthModal: FC<{ isOpen: boolean; onClose: () => void; onSuccess: () => voi
 // --- Task/Project Management Modals ---
 
 const AVAILABLE_COLORS = [
-    'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 
-    'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500', 
-    'bg-rose-500', 'bg-red-500', 'bg-orange-500', 
-    'bg-amber-500', 'bg-green-500', 'bg-emerald-500', 
+    'bg-blue-500', 'bg-indigo-500', 'bg-violet-500',
+    'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
+    'bg-rose-500', 'bg-red-500', 'bg-orange-500',
+    'bg-amber-500', 'bg-green-500', 'bg-emerald-500',
     'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-gray-500'
 ];
+
+// Tailwind 클래스명 → 실제 색상값 (동적 클래스는 빌드에 포함되지 않으므로 인라인 스타일용)
+const COLOR_HEX: Record<string, string> = {
+    'bg-rose-500': '#f43f5e', 'bg-amber-500': '#f59e0b', 'bg-orange-500': '#f97316',
+    'bg-blue-500': '#3b82f6', 'bg-indigo-500': '#6366f1', 'bg-emerald-500': '#10b981',
+    'bg-red-500': '#ef4444', 'bg-green-500': '#22c55e', 'bg-purple-500': '#a855f7',
+    'bg-gray-500': '#6b7280', 'bg-violet-500': '#8b5cf6', 'bg-fuchsia-500': '#d946ef',
+    'bg-pink-500': '#ec4899', 'bg-teal-500': '#14b8a6', 'bg-cyan-500': '#06b6d4',
+    'bg-sky-500': '#0ea5e9'
+};
+const colorToHex = (c?: string | null) => COLOR_HEX[c || ''] || '#6366f1';
 
 // 하나의 달력에서 시작일~종료일 범위를 선택하는 컴포넌트
 const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: string, end: string) => void; onComplete?: () => void; single?: boolean }> = ({ startDate, endDate, onChange, onComplete, single }) => {
@@ -571,19 +582,7 @@ const TaskModal: FC<{
         return employees.filter(e => e.departmentId === selectedDeptId);
     }, [employees, selectedDeptId]);
 
-    // Tailwind가 색상을 못 읽을 때를 대비해 스타일 직접 주입용 맵 (아까 만든거 활용)
-    const getColorStyle = (c: string) => {
-        // TaskBar 위에 정의했던 COLOR_MAP이 있다고 가정하거나, 간단히 직접 변환
-        const map: Record<string, string> = {
-            'bg-rose-500': '#f43f5e', 'bg-amber-500': '#f59e0b', 'bg-orange-500': '#f97316',
-            'bg-blue-500': '#3b82f6', 'bg-indigo-500': '#6366f1', 'bg-emerald-500': '#10b981',
-            'bg-red-500': '#ef4444', 'bg-green-500': '#22c55e', 'bg-purple-500': '#a855f7',
-            'bg-gray-500': '#6b7280', 'bg-violet-500': '#8b5cf6', 'bg-fuchsia-500': '#d946ef',
-            'bg-pink-500': '#ec4899', 'bg-teal-500': '#14b8a6', 'bg-cyan-500': '#06b6d4',
-            'bg-sky-500': '#0ea5e9'
-        };
-        return map[c] || '#6366f1';
-    };
+    const getColorStyle = colorToHex;
 
     return (
         <ModalBase isOpen={isOpen} onClose={onClose} title={task ? '태스크 수정' : '새 태스크 추가'}>
@@ -662,30 +661,32 @@ const TaskModal: FC<{
 const ProjectModal: FC<{
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (name: string) => Promise<void>;
+    onSubmit: (name: string, color: string) => Promise<void>;
     project: Project | null;
 }> = ({ isOpen, onClose, onSubmit, project }) => {
     const [name, setName] = useState('');
+    const [color, setColor] = useState('bg-indigo-500');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const prevIsOpenRef = useRef(false);
 
-    useEffect(() => { 
+    useEffect(() => {
         if (isOpen && !prevIsOpenRef.current) {
-            setName(project?.name || ''); 
+            setName(project?.name || '');
+            setColor(project?.color || 'bg-indigo-500');
         }
         prevIsOpenRef.current = isOpen;
     }, [isOpen, project]);
-    
-    const handleSubmit = async (e: React.FormEvent) => { 
-        e.preventDefault(); 
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
         setIsSubmitting(true);
         try {
-            await onSubmit(name);
+            await onSubmit(name, color);
         } finally {
             setIsSubmitting(false);
         }
     };
-    
+
     return (
         <ModalBase isOpen={isOpen} onClose={onClose} title={project ? '프로젝트 수정' : '새 프로젝트 추가'}>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -693,8 +694,22 @@ const ProjectModal: FC<{
                     <label className="text-xs text-gray-500 font-bold ml-1">프로젝트 명칭</label>
                     <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="프로젝트 이름을 입력하세요" className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-4 text-lg font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required autoFocus />
                 </div>
+                <div className="space-y-1">
+                    <label className="text-xs text-gray-500 font-bold ml-1">색상 선택</label>
+                    <div className="flex flex-wrap gap-2 p-2 bg-gray-100 dark:bg-gray-700/50 rounded-xl">
+                        {AVAILABLE_COLORS.map((c) => (
+                            <button
+                                type="button"
+                                key={c}
+                                onClick={() => setColor(c)}
+                                className={`w-6 h-6 rounded-full transition-transform hover:scale-110 focus:outline-none ring-2 ${color === c ? 'ring-gray-900 dark:ring-white scale-110' : 'ring-transparent'}`}
+                                style={{ backgroundColor: colorToHex(c) }}
+                            />
+                        ))}
+                    </div>
+                </div>
                 <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-black rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95">
-                    {isSubmitting ? '처리 중...' : '프로젝트 생성'}
+                    {isSubmitting ? '처리 중...' : project ? '저장 완료' : '프로젝트 생성'}
                 </button>
             </form>
         </ModalBase>
@@ -945,36 +960,37 @@ const ProjectBar: FC<{ project: Project; viewStartDate: Date; dayWidth: number; 
 
     const textOffset = `max(0px, calc(var(--gantt-scroll-left, 0px) - ${left}px))`;
     const visibleBarWidth = `calc(${width}px - ${textOffset})`;
+    const hex = colorToHex(project.color);
 
     return (
         <div className="absolute top-1/2 -translate-y-1/2 flex items-center" style={{ left, height: barHeight, width: Math.max(0, width) }}>
-            <Tooltip content={<div className="text-xs p-2 font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-200">{project.name} <br/><span className="text-gray-900 dark:text-white">{averageProgress}% COMPLETE</span></div>}>
+            <Tooltip content={<div className="text-xs p-2 font-black uppercase tracking-wider" style={{ color: hex }}>{project.name} <br/><span className="text-gray-900 dark:text-white">{averageProgress}% COMPLETE</span></div>}>
                 <div className="relative w-full h-full flex items-center group cursor-pointer">
                     {/* Glow & Track Background */}
-                    <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
+                    <div className="absolute inset-0 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ backgroundColor: `${hex}33` }} />
+
                     <div className="relative w-full h-full flex items-center justify-center">
                         {/* Horizontal Body (The Track) - Thick body with border */}
-                        <div className="absolute w-full h-8 bg-white dark:bg-gray-900/90 border border-gray-300 dark:border-indigo-500/50 rounded-sm overflow-hidden shadow-lg backdrop-blur-sm z-10">
+                        <div className="absolute w-full h-8 bg-white dark:bg-gray-900/90 border border-gray-300 rounded-sm overflow-hidden shadow-lg backdrop-blur-sm z-10 dark:border-transparent" style={{ borderColor: `${hex}80` }}>
                             {/* Inner Progress Fill */}
-                            <div className="h-full bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-700 dark:from-indigo-700 dark:via-indigo-600 dark:to-indigo-500 transition-all duration-700 relative" style={{ width: `${averageProgress}%` }}>
+                            <div className="h-full transition-all duration-700 relative" style={{ width: `${averageProgress}%`, backgroundColor: hex }}>
                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
                             </div>
                         </div>
 
                         {/* Traditional Gantt Brackets (Summary Marks) */}
                         {/* Start (Left) Bracket */}
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-10 w-[6px] border-l-4 border-t-4 border-b-4 border-indigo-500 dark:border-indigo-400 rounded-l-sm z-20"></div>
-                        
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-10 w-[6px] border-l-4 border-t-4 border-b-4 rounded-l-sm z-20" style={{ borderColor: hex }}></div>
+
                         {/* End (Right) Bracket */}
-                        <div className="absolute right-0 top-1/2 -translate-y-1/2 h-10 w-[6px] border-r-4 border-t-4 border-b-4 border-indigo-500 dark:border-indigo-400 rounded-r-sm z-20"></div>
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 h-10 w-[6px] border-r-4 border-t-4 border-b-4 rounded-r-sm z-20" style={{ borderColor: hex }}></div>
                     </div>
 
                     {/* Project Label Overlay — 바 너비를 벗어나는 글자는 숨김 */}
                     <div className="absolute top-0 left-0 h-full w-full overflow-hidden pointer-events-none z-30">
                         <div className="h-full flex items-center" style={{ transform: `translateX(${textOffset})` }}>
                             <span className="font-bold text-gray-900 dark:text-white px-3 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-[0_2px_4px_rgba(255,255,255,0.8)] dark:drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" style={{ maxWidth: visibleBarWidth, fontSize: fontSize + 1 }}>
-                                {project.name} <span className="ml-1 text-indigo-600 dark:text-indigo-300">{averageProgress}%</span>
+                                {project.name} <span className="ml-1" style={{ color: hex }}>{averageProgress}%</span>
                             </span>
                         </div>
                     </div>
@@ -1079,7 +1095,7 @@ const GanttView: FC<{
                                         {!isMobile && <div draggable onDragStart={(e) => { e.dataTransfer.setData('projectId', project.id); setDraggedProjectId(project.id); }} onDragEnd={() => {setDraggedProjectId(null); setDropTargetId(null);}} className="cursor-move py-1 mr-0.5 -ml-0.5 text-gray-400 hover:text-gray-900 dark:text-gray-600 dark:hover:text-white transition-colors"><GripVerticalIcon className="h-4 w-3" /></div>}
                                         <div className="flex-grow flex items-center cursor-pointer truncate" onClick={() => toggleProjectExpansion(project.id)}>
                                             <ChevronDownIcon className={`h-3.5 w-3.5 mr-1.5 transition-transform duration-500 ${isExpanded ? 'rotate-0' : '-rotate-90 text-indigo-500 dark:text-indigo-400'}`} />
-                                            <FolderIcon className="h-5 w-5 mr-1.5 sm:mr-2 text-indigo-500 shrink-0 opacity-80" />
+                                            <span className="mr-1.5 sm:mr-2 shrink-0 opacity-80 flex" style={{ color: colorToHex(project.color) }}><FolderIcon className="h-5 w-5" /></span>
                                             <span className="truncate">{project.name}</span>
                                         </div>
                                     </div>
@@ -1345,12 +1361,12 @@ const App: FC = () => {
         setUiSettings(newSettings);
     };
 
-    const handleProjectSubmit = async (name: string) => {
+    const handleProjectSubmit = async (name: string, color: string) => {
         try {
             if (projectModal.project) {
-                await updateProject(projectModal.project.id, name);
+                await updateProject(projectModal.project.id, name, color);
             } else {
-                await addProject(name);
+                await addProject(name, color);
             }
             if (!isOnline) await loadData();
             setProjectModal({ open: false, project: null });

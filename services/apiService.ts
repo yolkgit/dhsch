@@ -17,8 +17,8 @@ export const updateTaskPositions = async (projectId: string, tasks: any[]) => {
 };
 
 // CRUD Functions
-export const addProject = async (name: string) => (await fetch(`${API_BASE_URL}/projects`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) })).json();
-export const updateProject = async (id: string, name: string) => (await fetch(`${API_BASE_URL}/projects/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) })).json();
+export const addProject = async (name: string, color?: string) => (await fetch(`${API_BASE_URL}/projects`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, color}) })).json();
+export const updateProject = async (id: string, name: string, color?: string) => (await fetch(`${API_BASE_URL}/projects/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, color}) })).json();
 export const deleteProject = async (id: string) => fetch(`${API_BASE_URL}/projects/${id}`, { method: 'DELETE' });
 export const updateProjects = async (projects: any[]) => fetch(`${API_BASE_URL}/projects/reorder`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ projects: projects.map((p, i) => ({id: p.id, position: i})) }) });
 export const addTask = async (projectId: string, data: any) => (await fetch(`${API_BASE_URL}/tasks`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...data, projectId}) })).json();
