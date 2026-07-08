@@ -969,11 +969,13 @@ const ProjectBar: FC<{ project: Project; viewStartDate: Date; dayWidth: number; 
                         <div className="absolute right-0 top-1/2 -translate-y-1/2 h-10 w-[6px] border-r-4 border-t-4 border-b-4 border-indigo-500 dark:border-indigo-400 rounded-r-sm z-20"></div>
                     </div>
 
-                    {/* Project Label Overlay */}
-                    <div className="absolute top-0 h-full flex items-center pointer-events-none z-30" style={{ transform: `translateX(${textOffset})` }}>
-                        <span className="font-bold text-gray-900 dark:text-white px-6 tracking-tight drop-shadow-[0_2px_4px_rgba(255,255,255,0.8)] dark:drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" style={{ maxWidth: visibleBarWidth, fontSize: fontSize + 1 }}>
-                            {project.name} <span className="ml-2 text-indigo-600 dark:text-indigo-300">{averageProgress}%</span>
-                        </span>
+                    {/* Project Label Overlay — 바 너비를 벗어나는 글자는 숨김 */}
+                    <div className="absolute top-0 left-0 h-full w-full overflow-hidden pointer-events-none z-30">
+                        <div className="h-full flex items-center" style={{ transform: `translateX(${textOffset})` }}>
+                            <span className="font-bold text-gray-900 dark:text-white px-3 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-[0_2px_4px_rgba(255,255,255,0.8)] dark:drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" style={{ maxWidth: visibleBarWidth, fontSize: fontSize + 1 }}>
+                                {project.name} <span className="ml-1 text-indigo-600 dark:text-indigo-300">{averageProgress}%</span>
+                            </span>
+                        </div>
                     </div>
                 </div>
             </Tooltip>
@@ -1072,11 +1074,11 @@ const GanttView: FC<{
                         }}>
                             <div className={`flex items-center hover:bg-indigo-500/[0.03] group transition-all duration-300 border-b border-gray-200 dark:border-gray-800/40`} style={{ height: uiSettings.rowHeight }}>
                                 <div style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex border-r border-gray-200 dark:border-gray-800 sticky left-0 z-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md h-full shadow-sm dark:shadow-2xl transition-colors">
-                                    <div style={{ width: visibleColumnWidths.project }} className="flex items-center px-2 sm:px-5 text-sm font-black text-gray-800 dark:text-gray-100 truncate tracking-tight">
-                                        {!isMobile && <div draggable onDragStart={(e) => { e.dataTransfer.setData('projectId', project.id); setDraggedProjectId(project.id); }} onDragEnd={() => {setDraggedProjectId(null); setDropTargetId(null);}} className="cursor-move p-1.5 -ml-2 mr-2 text-gray-400 hover:text-gray-900 dark:text-gray-600 dark:hover:text-white transition-colors"><GripVerticalIcon className="h-4 w-4" /></div>}
+                                    <div style={{ width: visibleColumnWidths.project }} className="flex items-center pl-1 pr-2 sm:pr-5 text-sm font-black text-gray-800 dark:text-gray-100 truncate tracking-tight">
+                                        {!isMobile && <div draggable onDragStart={(e) => { e.dataTransfer.setData('projectId', project.id); setDraggedProjectId(project.id); }} onDragEnd={() => {setDraggedProjectId(null); setDropTargetId(null);}} className="cursor-move p-1 mr-1 text-gray-400 hover:text-gray-900 dark:text-gray-600 dark:hover:text-white transition-colors"><GripVerticalIcon className="h-4 w-4" /></div>}
                                         <div className="flex-grow flex items-center cursor-pointer truncate" onClick={() => toggleProjectExpansion(project.id)}>
-                                            <ChevronDownIcon className={`h-3.5 w-3.5 mr-2 sm:mr-3 transition-transform duration-500 ${isExpanded ? 'rotate-0' : '-rotate-90 text-indigo-500 dark:text-indigo-400'}`} />
-                                            <FolderIcon className="h-5 w-5 mr-2 sm:mr-3 text-indigo-500 shrink-0 opacity-80" />
+                                            <ChevronDownIcon className={`h-3.5 w-3.5 mr-1.5 transition-transform duration-500 ${isExpanded ? 'rotate-0' : '-rotate-90 text-indigo-500 dark:text-indigo-400'}`} />
+                                            <FolderIcon className="h-5 w-5 mr-1.5 sm:mr-2 text-indigo-500 shrink-0 opacity-80" />
                                             <span className="truncate">{project.name}</span>
                                         </div>
                                     </div>
