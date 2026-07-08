@@ -14,6 +14,7 @@ import { io } from 'socket.io-client';
 // Settings Constants Keys
 const SETTINGS_KEY = 'gantt-ui-settings-v2';
 const GANTT_COLUMN_WIDTHS_KEY = 'ganttColumnWidths';
+const EXPANDED_PROJECTS_KEY = 'ganttExpandedProjects';
 const MIN_DAYS_IN_VIEW = 30;
 const MIN_COLUMN_WIDTH = 50;
 
@@ -1189,7 +1190,10 @@ const App: FC = () => {
         return d;
     });
 
-    const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+    const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(() => {
+        // 접기/펼치기 상태 복원 (새로고침해도 유지)
+        try { return JSON.parse(localStorage.getItem(EXPANDED_PROJECTS_KEY) || '{}'); } catch { return {}; }
+    });
     const [isLoading, setIsLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -1429,6 +1433,11 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; startD
             return { ...prev, [pid]: !current };
         });
     };
+
+    // 접기/펼치기 상태 저장
+    useEffect(() => {
+        localStorage.setItem(EXPANDED_PROJECTS_KEY, JSON.stringify(expandedProjects));
+    }, [expandedProjects]);
 
     const handleReorderProjects = async (draggedId: string, targetId: string) => {
         if (draggedId === targetId) return;
