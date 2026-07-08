@@ -494,11 +494,12 @@ const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: 
     );
 };
 
+type TaskSegment = { start: string; end: string };
+
 const TaskModal: FC<{
     isOpen: boolean;
     onClose: () => void;
-    // onSubmit 타입에 color 추가
-    onSubmit: (data: { name: string; employeeId: string; startDate: string; duration: number; description: string; color: string }) => Promise<void>;
+    onSubmit: (data: { name: string; employeeId: string; segments: TaskSegment[]; description: string; color: string }) => Promise<void>;
     employees: Employee[];
     departments: Department[];
     task?: Task;
@@ -507,19 +508,17 @@ const TaskModal: FC<{
     const [name, setName] = useState('');
     const [employeeId, setEmployeeId] = useState('');
     const [selectedDeptId, setSelectedDeptId] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [duration, setDuration] = useState(1);
+    const [segments, setSegments] = useState<TaskSegment[]>([]);
     const [description, setDescription] = useState('');
     const [color, setColor] = useState('bg-blue-500'); // 기본값 파랑
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [openCalIndex, setOpenCalIndex] = useState<number | null>(null); // 어느 일정의 달력이 열려있는지
 
     const prevIsOpenRef = useRef(false);
 
     useEffect(() => {
         if (isOpen && !prevIsOpenRef.current) {
-            setIsCalendarOpen(false);
+            setOpenCalIndex(null);
             if (task) {
                 setName(task.name);
                 setEmployeeId(task.employeeId);
@@ -527,9 +526,11 @@ const TaskModal: FC<{
                 if (assignedEmp) setSelectedDeptId(assignedEmp.departmentId);
                 else if (departments.length > 0) setSelectedDeptId(departments[0].id);
 
-                setStartDate(formatDate(new Date(task.startDate)));
-                setEndDate(formatDate(new Date(task.endDate)));
-                setDuration(getDaysBetween(new Date(task.startDate), new Date(task.endDate)));
+                // 저장된 일정 목록이 있으면 사용, 없으면 시작~종료일을 단일 일정으로
+                const saved = Array.isArray(task.segments) && task.segments.length > 0
+                    ? task.segments.map(s => ({ start: s.start, end: s.end }))
+                    : [{ start: formatDate(new Date(task.startDate)), end: formatDate(new Date(task.endDate)) }];
+                setSegments(saved);
                 setDescription(task.description || '');
                 setColor(task.color || 'bg-blue-500'); // 기존 색상 불러오기
             } else {
@@ -538,9 +539,7 @@ const TaskModal: FC<{
                 setSelectedDeptId(defaultDept ? defaultDept.id : '');
                 const defaultEmp = employees.find(e => e.departmentId === (defaultDept ? defaultDept.id : '')) || employees[0];
                 setEmployeeId(defaultEmp ? defaultEmp.id : '');
-                setStartDate(formatDate(new Date()));
-                setEndDate(formatDate(addDays(new Date(), 2)));
-                setDuration(3);
+                setSegments([{ start: formatDate(new Date()), end: formatDate(addDays(new Date(), 2)) }]);
                 setDescription('');
                 setColor('bg-blue-500'); // 새 태스크 기본값
             }
@@ -555,25 +554,39 @@ const TaskModal: FC<{
         else setEmployeeId('');
     };
 
-    // 달력에서 범위 선택 → 기간 자동 계산 / 기간 입력 → 종료일 자동 계산
-    const handleRangeChange = (start: string, end: string) => {
-        setStartDate(start);
-        setEndDate(end);
-        setDuration(getDaysBetween(new Date(start), new Date(end)));
+    // 일정 목록 편집
+    const updateSegment = (index: number, start: string, end: string) => {
+        setSegments(prev => prev.map((s, i) => i === index ? { start, end } : s));
     };
+    const addSegment = () => {
+        setSegments(prev => {
+            const lastEnd = prev.length > 0 ? prev[prev.length - 1].end : formatDate(new Date());
+            const start = formatDate(addDays(new Date(lastEnd), 2));
+            const next = [...prev, { start, end: formatDate(addDays(new Date(lastEnd), 4)) }];
+            setOpenCalIndex(next.length - 1); // 새 일정의 달력을 바로 열어줌
+            return next;
+        });
+    };
+    const removeSegment = (index: number) => {
+        setSegments(prev => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev);
+        setOpenCalIndex(null);
+    };
+    // 일정이 1개일 때만 쓰는 기간(일) 입력
     const handleDurationChange = (value: number) => {
         const d = Math.max(1, isNaN(value) ? 1 : value);
-        setDuration(d);
-        if (startDate) setEndDate(formatDate(addDays(new Date(startDate), d - 1)));
+        setSegments(prev => prev.length === 1
+            ? [{ start: prev[0].start, end: formatDate(addDays(new Date(prev[0].start), d - 1)) }]
+            : prev);
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!employeeId) { alert('담당자를 선택해주세요.'); return; }
+        if (segments.length === 0) { alert('일정을 선택해주세요.'); return; }
         setIsSubmitting(true);
         try {
-            // color 정보도 같이 보냄
-            await onSubmit({ name, employeeId, startDate, duration, description, color });
+            const sorted = [...segments].sort((a, b) => a.start.localeCompare(b.start));
+            await onSubmit({ name, employeeId, segments: sorted, description, color });
         } finally { setIsSubmitting(false); }
     };
 
@@ -627,23 +640,41 @@ const TaskModal: FC<{
                     </div>
                 </div>
 
-                {/* 4. 날짜 및 기간 — 달력 아이콘 클릭 시 범위 선택 달력 표시 */}
+                {/* 4. 일정 목록 — 여러 일정 추가 가능, 각 일정은 달력 클릭으로 범위 선택 */}
                 <div className="space-y-1">
-                    <label className="text-xs text-gray-500 font-bold ml-1">일정</label>
-                    <button type="button" onClick={() => setIsCalendarOpen(v => !v)} className="w-full flex items-center gap-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none transition-all hover:border-indigo-400 dark:hover:border-indigo-500">
-                        <CalendarIcon className={`h-5 w-5 flex-shrink-0 ${isCalendarOpen ? 'text-indigo-500' : 'text-gray-400'}`} />
-                        <span className="text-gray-900 dark:text-white text-sm font-bold">{startDate} ~ {endDate}</span>
-                        <span className="ml-auto text-xs font-black text-indigo-600 dark:text-indigo-400">{duration}일</span>
-                        <ChevronDownIcon className={`h-4 w-4 text-gray-400 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isCalendarOpen && (
-                        <RangeCalendar startDate={startDate} endDate={endDate} onChange={handleRangeChange} onComplete={() => setIsCalendarOpen(false)} />
-                    )}
+                    <label className="text-xs text-gray-500 font-bold ml-1">일정 {segments.length > 1 && <span className="text-indigo-500">({segments.length}개)</span>}</label>
+                    <div className="space-y-2">
+                        {segments.map((seg, i) => (
+                            <div key={i}>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => setOpenCalIndex(openCalIndex === i ? null : i)} className="flex-grow flex items-center gap-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-left focus:ring-2 focus:ring-indigo-500 outline-none transition-all hover:border-indigo-400 dark:hover:border-indigo-500">
+                                        <CalendarIcon className={`h-5 w-5 flex-shrink-0 ${openCalIndex === i ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                        <span className="text-gray-900 dark:text-white text-sm font-bold">{seg.start} ~ {seg.end}</span>
+                                        <span className="ml-auto text-xs font-black text-indigo-600 dark:text-indigo-400">{getDaysBetween(new Date(seg.start), new Date(seg.end))}일</span>
+                                        <ChevronDownIcon className={`h-4 w-4 text-gray-400 transition-transform ${openCalIndex === i ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {segments.length > 1 && (
+                                        <button type="button" onClick={() => removeSegment(i)} title="일정 삭제" className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"><XMarkIcon className="h-4 w-4" /></button>
+                                    )}
+                                </div>
+                                {openCalIndex === i && (
+                                    <div className="mt-1">
+                                        <RangeCalendar startDate={seg.start} endDate={seg.end} onChange={(s, e) => updateSegment(i, s, e)} onComplete={() => setOpenCalIndex(null)} />
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        <button type="button" onClick={addSegment} className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors">
+                            <PlusIcon className="h-4 w-4" /> 일정 추가
+                        </button>
+                    </div>
                 </div>
-                <div className="space-y-1">
-                     <label className="text-xs text-gray-500 font-bold ml-1">기간 (일) — 직접 입력하면 종료일이 자동 계산됩니다</label>
-                     <input type="number" min="1" value={duration} onChange={e => handleDurationChange(parseInt(e.target.value))} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" required />
-                </div>
+                {segments.length === 1 && (
+                    <div className="space-y-1">
+                         <label className="text-xs text-gray-500 font-bold ml-1">기간 (일) — 직접 입력하면 종료일이 자동 계산됩니다</label>
+                         <input type="number" min="1" value={getDaysBetween(new Date(segments[0].start), new Date(segments[0].end))} onChange={e => handleDurationChange(parseInt(e.target.value))} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                    </div>
+                )}
                 
                 {/* 5. 설명 */}
                 <div className="space-y-1">
@@ -874,23 +905,37 @@ const TaskBar: FC<{
     const isDraggingRef = useRef(false);
     const startDate = new Date(task.startDate);
     const endDate = new Date(task.endDate);
-    const startOffsetDays = getDaysBetween(viewStartDate, startDate) - 1;
-    const durationDays = getDaysBetween(startDate, endDate);
-    const left = startOffsetDays * dayWidth;
-    const width = durationDays * dayWidth - 4;
-    // Remove fixed limit check to allow infinite scrolling if implemented, 
-    // but for now we just check if it's completely off-screen to the left
+
+    // 일정 목록: 저장된 segments가 있으면 사용, 없으면 시작~종료 단일 구간
+    const segments = (Array.isArray(task.segments) && task.segments.length > 0
+        ? [...task.segments].sort((a, b) => a.start.localeCompare(b.start))
+        : [{ start: formatDate(startDate), end: formatDate(endDate) }]
+    ).map(s => {
+        const sd = new Date(s.start), ed = new Date(s.end);
+        return {
+            ...s,
+            left: (getDaysBetween(viewStartDate, sd) - 1) * dayWidth,
+            width: getDaysBetween(sd, ed) * dayWidth - 4
+        };
+    });
+
+    const left = segments[0].left;
+    const lastSeg = segments[segments.length - 1];
+    const width = lastSeg.left + lastSeg.width - left;
     if (left + width < 0) return null;
 
     const employee = employeeMap.get(task.employeeId);
     const department = employee ? departmentMap.get(employee.departmentId) : undefined;
+    const hex = colorToHex(task.color);
 
     const tooltipContent = (
         <div className="space-y-3 w-64 p-1">
             <p className="font-black text-lg text-indigo-600 dark:text-indigo-300 tracking-tight leading-tight">{task.name}</p>
             <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-2 font-bold uppercase tracking-wider">
                 <div className="flex items-center justify-between"><span className="opacity-50">담당</span> <span>{employee?.name} ({department?.name})</span></div>
-                <div className="flex items-center justify-between"><span className="opacity-50">기간</span> <span>{formatDate(startDate)} ~ {formatDate(endDate)}</span></div>
+                {segments.length > 1
+                    ? <div className="space-y-1">{segments.map((s, i) => <div key={i} className="flex items-center justify-between"><span className="opacity-50">일정 {i + 1}</span> <span>{s.start} ~ {s.end}</span></div>)}</div>
+                    : <div className="flex items-center justify-between"><span className="opacity-50">기간</span> <span>{formatDate(startDate)} ~ {formatDate(endDate)}</span></div>}
                 <div className="pt-2">
                     <div className="flex items-center justify-between mb-1.5"><span className="opacity-50">진행률</span> <span className="text-gray-900 dark:text-white">{task.progress}%</span></div>
                     <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -929,8 +974,16 @@ const TaskBar: FC<{
         <div className="absolute top-1/2 -translate-y-1/2" style={{ left, height: barHeight }}>
             <div style={{ width: Math.max(0, width), height: '100%' }}>
                 <Tooltip content={tooltipContent}>
-                    <div ref={barRef} onMouseDown={handleMouseDown} className="w-full h-full rounded-xl bg-white dark:bg-gray-800/90 shadow-md dark:shadow-2xl hover:ring-2 hover:ring-indigo-500/40 dark:hover:ring-white/40 transition-all duration-300 cursor-pointer flex items-center overflow-hidden border border-gray-200 dark:border-white/5">
-                        <div className={`h-full ${task.color} pointer-events-none transition-all duration-500 opacity-80 dark:opacity-70`} style={{ width: `${task.progress}%` }}></div>
+                    <div ref={barRef} onMouseDown={handleMouseDown} className="relative w-full h-full cursor-pointer group">
+                        {/* 일정이 나눠져 있으면 구간 사이를 점선으로 연결해 같은 태스크임을 표시 */}
+                        {segments.length > 1 && (
+                            <div className="absolute top-1/2 -translate-y-1/2 w-full border-t-2 border-dashed pointer-events-none" style={{ borderColor: hex, opacity: 0.55 }} />
+                        )}
+                        {segments.map((s, i) => (
+                            <div key={i} className="absolute top-0 h-full rounded-xl bg-white dark:bg-gray-800/90 shadow-md dark:shadow-2xl group-hover:ring-2 group-hover:ring-indigo-500/40 dark:group-hover:ring-white/40 transition-all duration-300 flex items-center overflow-hidden border border-gray-200 dark:border-white/5" style={{ left: s.left - left, width: Math.max(dayWidth * 0.5, s.width) }}>
+                                <div className={`h-full ${task.color} pointer-events-none transition-all duration-500 opacity-80 dark:opacity-70`} style={{ width: `${task.progress}%` }}></div>
+                            </div>
+                        ))}
                     </div>
                 </Tooltip>
             </div>
@@ -1373,18 +1426,20 @@ const App: FC = () => {
         } catch (e) { console.error(e); alert('Error saving project'); }
     };
 
-const handleTaskSubmit = async (data: { name: string; employeeId: string; startDate: string; duration: number; description: string; color: string }) => {
+const handleTaskSubmit = async (data: { name: string; employeeId: string; segments: { start: string; end: string }[]; description: string; color: string }) => {
         if (!taskModal.projectId) return;
         try {
-            const start = new Date(data.startDate);
-            const end = addDays(start, data.duration - 1); 
-            
+            // 전체 기간 = 첫 일정 시작 ~ 마지막 일정 종료 (segments는 정렬되어 옴)
+            const start = new Date(data.segments[0].start);
+            const end = new Date(data.segments[data.segments.length - 1].end);
+
             if (taskModal.task) {
                 await updateTask(taskModal.projectId, taskModal.task.id, {
                     name: data.name,
                     employeeId: data.employeeId,
                     startDate: start,
                     endDate: end,
+                    segments: data.segments,
                     description: data.description,
                     color: data.color // 색상 정보 전달
                 });
@@ -1394,6 +1449,7 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; startD
                     employeeId: data.employeeId,
                     startDate: start,
                     endDate: end,
+                    segments: data.segments,
                     description: data.description,
                     color: data.color // 색상 정보 전달
                 });

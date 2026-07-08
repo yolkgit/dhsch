@@ -43,6 +43,7 @@ model Task {
   name        String
   startDate   DateTime? @map("start_date") @db.Date
   endDate     DateTime? @map("end_date") @db.Date
+  segments    Json?
   color       String?   @default("bg-blue-500")
   employeeId  String?   @map("employee_id")
   progress    Int       @default(0)

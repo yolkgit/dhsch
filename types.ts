@@ -3,6 +3,8 @@ export interface Task {
   name: string;
   startDate: Date;
   endDate: Date;
+  // 여러 일정(구간) 목록. 없으면 startDate~endDate 단일 일정으로 취급
+  segments?: { start: string; end: string }[];
   color: string;
   employeeId: string;
   progress: number;
