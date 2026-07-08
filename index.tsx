@@ -494,7 +494,7 @@ const RangeCalendar: FC<{ startDate: string; endDate: string; onChange: (start: 
     );
 };
 
-type TaskSegment = { start: string; end: string };
+type TaskSegment = { start: string; end: string; note?: string };
 
 const TaskModal: FC<{
     isOpen: boolean;
@@ -528,7 +528,7 @@ const TaskModal: FC<{
 
                 // 저장된 일정 목록이 있으면 사용, 없으면 시작~종료일을 단일 일정으로
                 const saved = Array.isArray(task.segments) && task.segments.length > 0
-                    ? task.segments.map(s => ({ start: s.start, end: s.end }))
+                    ? task.segments.map(s => ({ start: s.start, end: s.end, note: s.note || '' }))
                     : [{ start: formatDate(new Date(task.startDate)), end: formatDate(new Date(task.endDate)) }];
                 setSegments(saved);
                 setDescription(task.description || '');
@@ -556,7 +556,10 @@ const TaskModal: FC<{
 
     // 일정 목록 편집
     const updateSegment = (index: number, start: string, end: string) => {
-        setSegments(prev => prev.map((s, i) => i === index ? { start, end } : s));
+        setSegments(prev => prev.map((s, i) => i === index ? { ...s, start, end } : s));
+    };
+    const updateSegmentNote = (index: number, note: string) => {
+        setSegments(prev => prev.map((s, i) => i === index ? { ...s, note } : s));
     };
     const addSegment = () => {
         setSegments(prev => {
@@ -662,6 +665,7 @@ const TaskModal: FC<{
                                         <RangeCalendar startDate={seg.start} endDate={seg.end} onChange={(s, e) => updateSegment(i, s, e)} onComplete={() => setOpenCalIndex(null)} />
                                     </div>
                                 )}
+                                <input type="text" value={seg.note || ''} onChange={e => updateSegmentNote(i, e.target.value)} placeholder="이 일정의 내용 (선택)" className="mt-1 w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-gray-400 dark:placeholder-gray-500" />
                             </div>
                         ))}
                         <button type="button" onClick={addSegment} className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors">
@@ -934,8 +938,16 @@ const TaskBar: FC<{
             <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-2 font-bold uppercase tracking-wider">
                 <div className="flex items-center justify-between"><span className="opacity-50">담당</span> <span>{employee?.name} ({department?.name})</span></div>
                 {segments.length > 1
-                    ? <div className="space-y-1">{segments.map((s, i) => <div key={i} className="flex items-center justify-between"><span className="opacity-50">일정 {i + 1}</span> <span>{s.start} ~ {s.end}</span></div>)}</div>
-                    : <div className="flex items-center justify-between"><span className="opacity-50">기간</span> <span>{formatDate(startDate)} ~ {formatDate(endDate)}</span></div>}
+                    ? <div className="space-y-1">{segments.map((s, i) => (
+                        <div key={i}>
+                            <div className="flex items-center justify-between"><span className="opacity-50">일정 {i + 1}</span> <span>{s.start} ~ {s.end}</span></div>
+                            {s.note && <p className="normal-case tracking-normal text-gray-700 dark:text-gray-200 font-medium pl-2 mt-0.5">· {s.note}</p>}
+                        </div>
+                    ))}</div>
+                    : <>
+                        <div className="flex items-center justify-between"><span className="opacity-50">기간</span> <span>{formatDate(startDate)} ~ {formatDate(endDate)}</span></div>
+                        {segments[0].note && <p className="normal-case tracking-normal text-gray-700 dark:text-gray-200 font-medium">· {segments[0].note}</p>}
+                    </>}
                 <div className="pt-2">
                     <div className="flex items-center justify-between mb-1.5"><span className="opacity-50">진행률</span> <span className="text-gray-900 dark:text-white">{task.progress}%</span></div>
                     <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -982,6 +994,12 @@ const TaskBar: FC<{
                         {segments.map((s, i) => (
                             <div key={i} className="absolute top-0 h-full rounded-xl bg-white dark:bg-gray-800/90 shadow-md dark:shadow-2xl group-hover:ring-2 group-hover:ring-indigo-500/40 dark:group-hover:ring-white/40 transition-all duration-300 flex items-center overflow-hidden border border-gray-200 dark:border-white/5" style={{ left: s.left - left, width: Math.max(dayWidth * 0.5, s.width) }}>
                                 <div className={`h-full ${task.color} pointer-events-none transition-all duration-500 opacity-80 dark:opacity-70`} style={{ width: `${task.progress}%` }}></div>
+                                {/* 첫 구간은 태스크명이 겹치므로 두 번째 구간부터 일정 내용 표시 */}
+                                {i > 0 && s.note && (
+                                    <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
+                                        <span className="font-bold text-gray-700 dark:text-white truncate drop-shadow-sm tracking-tight" style={{ fontSize: Math.max(9, fontSize - 1) }}>{s.note}</span>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
