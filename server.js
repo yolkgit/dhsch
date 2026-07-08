@@ -64,8 +64,12 @@ app.get('/api/employees', async (req, res) => {
   res.json(emps);
 });
 app.post('/api/projects', async (req, res) => {
-  const p = await prisma.project.create({ data: { name: req.body.name, position: 0 } });
-  broadcastUpdate(); res.json(p);
+  try {
+    // 새 프로젝트는 맨 뒤 순서로 추가
+    const maxPos = await prisma.project.aggregate({ _max: { position: true } });
+    const p = await prisma.project.create({ data: { name: req.body.name, position: (maxPos._max.position ?? -1) + 1 } });
+    broadcastUpdate(); res.json(p);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/tasks', async (req, res) => {
     const { projectId, ...data } = req.body;
@@ -80,14 +84,19 @@ app.put('/api/tasks/:id', async (req, res) => {
     const t = await prisma.task.update({ where: { id: req.params.id }, data: updateData });
     broadcastUpdate(); res.json(t);
 });
-app.put('/api/projects/:id', async (req, res) => {
-    const p = await prisma.project.update({ where: { id: req.params.id }, data: { name: req.body.name } });
-    broadcastUpdate(); res.json(p);
-});
+// 주의: '/api/projects/reorder'는 '/api/projects/:id'보다 먼저 정의해야 함 (:id가 'reorder'를 가로채는 버그 방지)
 app.put('/api/projects/reorder', async (req, res) => {
-    const { projects } = req.body;
-    await Promise.all(projects.map(p => prisma.project.update({ where: { id: String(p.id) }, data: { position: parseInt(p.position) } }).catch(e=>console.error(e))));
-    broadcastUpdate(); res.json({success:true});
+    try {
+        const { projects } = req.body;
+        await Promise.all(projects.map(p => prisma.project.update({ where: { id: String(p.id) }, data: { position: parseInt(p.position) } }).catch(e=>console.error(e))));
+        broadcastUpdate(); res.json({success:true});
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/projects/:id', async (req, res) => {
+    try {
+        const p = await prisma.project.update({ where: { id: req.params.id }, data: { name: req.body.name } });
+        broadcastUpdate(); res.json(p);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/projects/:id', async (req, res) => {
   await prisma.project.delete({ where: { id: req.params.id } });
