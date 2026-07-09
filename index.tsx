@@ -807,6 +807,63 @@ const ConfirmationModal: FC<{
 
 // --- Main Components ---
 
+// 등급별 대표 색상 (링·배지·차트 공용)
+const gradeHex = (g: string) =>
+    g === 'S' ? '#8b5cf6' : g === 'A' ? '#10b981' : g === 'B' ? '#3b82f6' : g === 'C' ? '#f59e0b' : g === 'D' ? '#f43f5e' : '#9ca3af';
+
+// 점수 링 (도넛) — 종합점수를 한눈에
+const ScoreRing: FC<{ score: number | null; grade: string; size?: number; stroke?: number }> = ({ score, grade, size = 44, stroke = 4 }) => {
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    const pct = score ?? 0;
+    const hex = gradeHex(grade);
+    return (
+        <div className="relative inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+            <svg width={size} height={size} className="-rotate-90">
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-gray-200 dark:stroke-gray-700" />
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} stroke={hex} strokeLinecap="round"
+                    strokeDasharray={circ} strokeDashoffset={circ * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset 0.7s ease' }} />
+            </svg>
+            <span className="absolute font-black tabular-nums" style={{ fontSize: size * 0.3, color: score === null ? '#9ca3af' : hex }}>{score ?? '-'}</span>
+        </div>
+    );
+};
+
+// 5각 레이더 차트 — 개인 평가 프로필
+const RadarChart: FC<{ data: { label: string; value: number | null }[]; hex: string; size?: number }> = ({ data, hex, size = 200 }) => {
+    const c = size / 2;
+    const rMax = c - 34;
+    const n = data.length;
+    const angle = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
+    const pt = (i: number, r: number): [number, number] => [c + r * Math.cos(angle(i)), c + r * Math.sin(angle(i))];
+    const ringPoly = (ratio: number) => data.map((_, i) => pt(i, rMax * ratio).join(',')).join(' ');
+    const valuePoly = data.map((d, i) => pt(i, Math.max(0.03, (d.value ?? 0) / 100) * rMax).join(',')).join(' ');
+    return (
+        <svg width={size} height={size} className="mx-auto">
+            {[0.25, 0.5, 0.75, 1].map(ratio => (
+                <polygon key={ratio} points={ringPoly(ratio)} fill="none" className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
+            ))}
+            {data.map((_, i) => {
+                const [x, y] = pt(i, rMax);
+                return <line key={i} x1={c} y1={c} x2={x} y2={y} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />;
+            })}
+            <polygon points={valuePoly} fill={`${hex}33`} stroke={hex} strokeWidth={2} strokeLinejoin="round" />
+            {data.map((d, i) => {
+                const [x, y] = pt(i, Math.max(0.03, (d.value ?? 0) / 100) * rMax);
+                return <circle key={i} cx={x} cy={y} r={3} fill={hex} />;
+            })}
+            {data.map((d, i) => {
+                const [x, y] = pt(i, rMax + 18);
+                return (
+                    <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="fill-gray-500 dark:fill-gray-400" style={{ fontSize: 10, fontWeight: 800 }}>
+                        {d.label} {d.value === null ? '-' : d.value}
+                    </text>
+                );
+            })}
+        </svg>
+    );
+};
+
 // 개인별 평가지표 리포트 (달성률·기한준수율 등 고과 참고용)
 const ReportView: FC<{
     projects: Project[];
@@ -983,6 +1040,25 @@ const ReportView: FC<{
                 ))}
             </div>
 
+            {/* TOP 3 랭킹 카드 */}
+            {rows.filter(r => r.score !== null).length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {rows.filter(r => r.score !== null).slice(0, 3).map((r, i) => (
+                        <div key={r.emp.id} onClick={() => setExpandedEmpId(prev => prev === r.emp.id ? null : r.emp.id)}
+                            className={`relative overflow-hidden bg-white dark:bg-gray-900 border rounded-2xl p-4 flex items-center gap-4 cursor-pointer hover:shadow-lg transition-all ${i === 0 ? 'border-amber-400/60 shadow-amber-400/10 shadow-lg' : 'border-gray-200 dark:border-gray-800'}`}>
+                            <div className="absolute -top-3 -right-3 text-6xl opacity-10 select-none">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</div>
+                            <span className="text-3xl select-none">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
+                            <ScoreRing score={r.score} grade={r.grade} size={56} stroke={5} />
+                            <div className="min-w-0">
+                                <p className="font-black text-gray-900 dark:text-white truncate">{r.emp.name}</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">{r.deptName}</p>
+                                <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-black border" style={{ color: gradeHex(r.grade), borderColor: `${gradeHex(r.grade)}55`, backgroundColor: `${gradeHex(r.grade)}15` }}>{r.grade} 등급</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* 평가표 */}
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
@@ -1017,13 +1093,35 @@ const ReportView: FC<{
                                     <td className="px-4 py-3 text-right font-bold tabular-nums">{r.onTime === null ? <span className="text-xs text-gray-400">-</span> : `${r.onTime}%`}</td>
                                     <td className="px-4 py-3 text-right font-bold tabular-nums">{r.goalRate === null ? <span className="text-xs text-gray-400">-</span> : <span className="text-sky-600 dark:text-sky-400">{r.goalRate}%</span>}</td>
                                     <td className="px-4 py-3 text-right font-bold tabular-nums">{r.qual === null ? <span className="text-xs text-gray-400">-</span> : <span className="text-fuchsia-600 dark:text-fuchsia-400">{r.qual}</span>}</td>
-                                    <td className="px-4 py-3 text-right font-black tabular-nums text-lg">{r.score ?? '-'}</td>
-                                    <td className="px-4 py-3 text-center"><span className={`inline-block min-w-[2rem] px-2 py-1 rounded-lg text-xs font-black border ${gradeColor(r.grade)}`}>{r.grade}</span></td>
+                                    <td className="px-4 py-3 text-right"><ScoreRing score={r.score} grade={r.grade} size={40} stroke={4} /></td>
+                                    <td className="px-4 py-3 text-center"><span className={`inline-block min-w-[2.2rem] px-2.5 py-1.5 rounded-xl text-sm font-black border ${gradeColor(r.grade)}`}>{r.grade}</span></td>
                                 </tr>
                                 {expandedEmpId === r.emp.id && (
                                 <tr className="border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/20">
                                     <td colSpan={12} className="px-4 py-4">
-                                        <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                            {/* 평가 프로필 (레이더 + 점수 구성) */}
+                                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-1">평가 프로필</p>
+                                                <RadarChart hex={gradeHex(r.grade)} data={[
+                                                    { label: '달성률', value: r.total > 0 ? r.achievement : null },
+                                                    { label: '진행률', value: r.total > 0 ? r.avgProgress : null },
+                                                    { label: '기한준수', value: r.onTime },
+                                                    { label: '목표', value: r.goalRate },
+                                                    { label: '정성', value: r.qual },
+                                                ]} />
+                                                <div className="space-y-1.5 mt-2">
+                                                    {([['정량 (50%)', r.quant, 'bg-indigo-500'], ['목표 (30%)', r.goalRate, 'bg-sky-500'], ['정성 (20%)', r.qual, 'bg-fuchsia-500']] as const).map(([label, val, cls]) => (
+                                                        <div key={label} className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-black text-gray-500 w-16 shrink-0">{label}</span>
+                                                            <div className="flex-grow h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                                <div className={`h-full ${cls} transition-all duration-500`} style={{ width: `${val ?? 0}%` }} />
+                                                            </div>
+                                                            <span className="text-[11px] font-black tabular-nums w-8 text-right">{val ?? '-'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                             {/* 분기 목표 (MBO) */}
                                             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-sky-500 mb-2">{curY}년 {curQ}분기 목표 (MBO)</p>
