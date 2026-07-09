@@ -29,6 +29,16 @@ export const deleteDepartment = async (id: string) => fetch(`${API_BASE_URL}/dep
 export const addEmployee = async (name: string, dId: string) => (await fetch(`${API_BASE_URL}/employees`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, departmentId: dId}) })).json();
 export const deleteEmployee = async (id: string) => fetch(`${API_BASE_URL}/employees/${id}`, { method: 'DELETE' });
 
+// 평가: 분기별 개인 목표 (MBO)
+export const getGoals = async () => (await fetch(`${API_BASE_URL}/goals`)).json();
+export const addGoal = async (employeeId: string, year: number, quarter: number, title: string) => (await fetch(`${API_BASE_URL}/goals`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({employeeId, year, quarter, title}) })).json();
+export const updateGoal = async (id: string, data: { title?: string; achieved?: boolean }) => (await fetch(`${API_BASE_URL}/goals/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) })).json();
+export const deleteGoal = async (id: string) => fetch(`${API_BASE_URL}/goals/${id}`, { method: 'DELETE' });
+
+// 평가: 분기별 관리자 정성평가
+export const getEvaluations = async () => (await fetch(`${API_BASE_URL}/evaluations`)).json();
+export const saveEvaluation = async (employeeId: string, year: number, quarter: number, scores: Record<string, number>) => (await fetch(`${API_BASE_URL}/evaluations`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({employeeId, year, quarter, scores}) })).json();
+
 // 관리자 비밀번호 (.env의 VITE_ADMIN_PASSWORD, 빌드 시점에 번들에 포함됨)
 const ADMIN_PASSWORD: string = import.meta.env.VITE_ADMIN_PASSWORD || '';
 export const hasAdminPassword = () => ADMIN_PASSWORD !== '';

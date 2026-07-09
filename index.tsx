@@ -2,8 +2,8 @@
 import React, { useState, useMemo, useEffect, FC, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import ReactDOM from 'react-dom/client';
-import { Department, Employee, Task, Project } from './types';
-import { getProjects, getDepartments, getEmployees, addProject, updateProject, deleteProject, addTask, updateTask, deleteTask, updateProjects, updateTaskPositions, hasAdminPassword, verifyAdminPassword, addDepartment, deleteDepartment, addEmployee, deleteEmployee } from './services/apiService';
+import { Department, Employee, Task, Project, Goal, Evaluation } from './types';
+import { getProjects, getDepartments, getEmployees, addProject, updateProject, deleteProject, addTask, updateTask, deleteTask, updateProjects, updateTaskPositions, hasAdminPassword, verifyAdminPassword, addDepartment, deleteDepartment, addEmployee, deleteEmployee, getGoals, addGoal, updateGoal, deleteGoal, getEvaluations, saveEvaluation } from './services/apiService';
 import { addDays, getDaysBetween, formatDate } from './utils/dateUtils';
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, FilterIcon, PlusIcon, FolderIcon, ChevronDownIcon, XMarkIcon, PencilIcon, TrashIcon, GripVerticalIcon, SunIcon, MoonIcon } from './components/icons';
 
@@ -505,7 +505,7 @@ type TaskSegment = { start: string; end: string; note?: string };
 const TaskModal: FC<{
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: { name: string; employeeId: string; segments: TaskSegment[]; description: string; color: string }) => Promise<void>;
+    onSubmit: (data: { name: string; employeeId: string; segments: TaskSegment[]; description: string; color: string; priority: number }) => Promise<void>;
     employees: Employee[];
     departments: Department[];
     task?: Task;
@@ -517,6 +517,7 @@ const TaskModal: FC<{
     const [segments, setSegments] = useState<TaskSegment[]>([]);
     const [description, setDescription] = useState('');
     const [color, setColor] = useState('bg-blue-500'); // 기본값 파랑
+    const [priority, setPriority] = useState(2); // 중요도: 3=상, 2=중, 1=하
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [openCalIndex, setOpenCalIndex] = useState<number | null>(null); // 어느 일정의 달력이 열려있는지
 
@@ -539,6 +540,7 @@ const TaskModal: FC<{
                 setSegments(saved);
                 setDescription(task.description || '');
                 setColor(task.color || 'bg-blue-500'); // 기존 색상 불러오기
+                setPriority(task.priority || 2);
             } else {
                 setName('');
                 const defaultDept = departments[0];
@@ -548,6 +550,7 @@ const TaskModal: FC<{
                 setSegments([{ start: formatDate(new Date()), end: formatDate(addDays(new Date(), 2)) }]);
                 setDescription('');
                 setColor('bg-blue-500'); // 새 태스크 기본값
+                setPriority(2);
             }
         }
         prevIsOpenRef.current = isOpen;
@@ -595,7 +598,7 @@ const TaskModal: FC<{
         setIsSubmitting(true);
         try {
             const sorted = [...segments].sort((a, b) => a.start.localeCompare(b.start));
-            await onSubmit({ name, employeeId, segments: sorted, description, color });
+            await onSubmit({ name, employeeId, segments: sorted, description, color, priority });
         } finally { setIsSubmitting(false); }
     };
 
@@ -646,6 +649,16 @@ const TaskModal: FC<{
                         <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} disabled={filteredEmployees.length === 0} className="w-full bg-gray-100 dark:bg-gray-700/50 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer disabled:opacity-50">
                              {filteredEmployees.length === 0 ? <option>직원 없음</option> : filteredEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                         </select>
+                    </div>
+                </div>
+
+                {/* 중요도 (평가 가중치: 상=3, 중=2, 하=1) */}
+                <div className="space-y-1">
+                    <label className="text-xs text-gray-500 font-bold ml-1">중요도 <span className="text-gray-400 font-medium">(평가 가중치에 반영)</span></label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {([[3, '상', 'bg-rose-600', 'text-rose-500 border-rose-500/40'], [2, '중', 'bg-amber-500', 'text-amber-500 border-amber-500/40'], [1, '하', 'bg-gray-500', 'text-gray-400 border-gray-400/40']] as const).map(([val, label, activeBg, inactive]) => (
+                            <button key={val} type="button" onClick={() => setPriority(val)} className={`py-2.5 rounded-xl text-sm font-black transition-all border ${priority === val ? `${activeBg} text-white border-transparent shadow-lg` : `bg-gray-100 dark:bg-gray-700/50 ${inactive}`}`}>{label}</button>
+                        ))}
                     </div>
                 </div>
 
@@ -803,8 +816,23 @@ const ReportView: FC<{
 }> = ({ projects, departments, employees, departmentMap }) => {
     const [period, setPeriod] = useState<'all' | 'month' | 'quarter' | 'year'>('all');
     const [deptFilter, setDeptFilter] = useState('all');
+    const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null); // 행 클릭 시 목표/정성평가 패널
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [evals, setEvals] = useState<Evaluation[]>([]);
+    const [newGoalTitle, setNewGoalTitle] = useState('');
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
+    const curY = today.getFullYear();
+    const curQ = Math.floor(today.getMonth() / 3) + 1; // 현재 분기 (목표/정성평가 입력 기준)
+
+    const loadExtras = useCallback(async () => {
+        try {
+            const [g, ev] = await Promise.all([getGoals(), getEvaluations()]);
+            setGoals(Array.isArray(g) ? g : []);
+            setEvals(Array.isArray(ev) ? ev : []);
+        } catch (e) { console.error('평가 데이터 로드 실패', e); }
+    }, []);
+    useEffect(() => { loadExtras(); }, [loadExtras]);
 
     const { periodStart, periodEnd, periodLabel } = useMemo(() => {
         const y = today.getFullYear(), m = today.getMonth();
@@ -816,9 +844,41 @@ const ReportView: FC<{
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [period]);
 
+    // 목표/정성평가의 기간 필터 (분기 단위 데이터라 기간과 매핑: 분기/이번달 → 현재 분기)
+    const inPeriodYQ = useCallback((y: number, q: number) => {
+        if (period === 'all') return true;
+        if (period === 'year') return y === curY;
+        return y === curY && q === curQ;
+    }, [period, curY, curQ]);
+
     const allTasks = useMemo(() => projects.flatMap(p => p.tasks || []), [projects]);
 
+    // 목표 추가/체크/삭제, 정성평가 저장 (현재 분기 기준)
+    const handleAddGoal = async (empId: string) => {
+        if (!newGoalTitle.trim()) return;
+        try { await addGoal(empId, curY, curQ, newGoalTitle.trim()); setNewGoalTitle(''); await loadExtras(); }
+        catch (e) { console.error(e); alert('목표 추가 실패'); }
+    };
+    const handleToggleGoal = async (goal: Goal) => {
+        try { await updateGoal(goal.id, { achieved: !goal.achieved }); await loadExtras(); }
+        catch (e) { console.error(e); alert('목표 변경 실패'); }
+    };
+    const handleDeleteGoal = async (id: string) => {
+        try { await deleteGoal(id); await loadExtras(); }
+        catch (e) { console.error(e); alert('목표 삭제 실패'); }
+    };
+    const EVAL_ITEMS: [string, string][] = [['collab', '협업'], ['resp', '책임감'], ['quality', '업무 품질']];
+    const handleEvalScore = async (empId: string, key: string, value: number) => {
+        try {
+            const current = evals.find(ev => ev.employeeId === empId && ev.year === curY && ev.quarter === curQ);
+            const scores = { ...(current?.scores || {}), [key]: value };
+            await saveEvaluation(empId, curY, curQ, scores);
+            await loadExtras();
+        } catch (e) { console.error(e); alert('정성평가 저장 실패'); }
+    };
+
     const rows = useMemo(() => {
+        const w = (t: Task) => t.priority || 2; // 중요도 가중치 (상3/중2/하1, 미지정=중)
         return employees
             .filter(e => deptFilter === 'all' || e.departmentId === deptFilter)
             .map(emp => {
@@ -831,22 +891,39 @@ const ReportView: FC<{
                 });
                 const total = tasks.length;
                 const done = tasks.filter(t => t.progress === 100).length;
-                const avgProgress = total ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / total) : 0;
+                const totalW = tasks.reduce((s, t) => s + w(t), 0);
+                const doneW = tasks.filter(t => t.progress === 100).reduce((s, t) => s + w(t), 0);
+                const avgProgress = totalW ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0) * w(t), 0) / totalW) : 0;
                 const due = tasks.filter(t => new Date(t.endDate) < today); // 마감이 지난 태스크
-                const dueDone = due.filter(t => t.progress === 100).length;
-                const overdue = due.length - dueDone; // 마감 지났는데 미완료 = 지연
-                const achievement = total ? Math.round((done / total) * 100) : 0; // 달성률
-                const onTime = due.length ? Math.round((dueDone / due.length) * 100) : null; // 기한준수율 (마감 도래분 기준)
-                // 종합점수: 달성률 50% + 기한준수율 30% + 평균진행률 20% (기한 도래 태스크가 없으면 달성률 60% + 진행률 40%)
-                const score = total === 0 ? null : Math.round(onTime === null
+                const dueW = due.reduce((s, t) => s + w(t), 0);
+                const dueDoneW = due.filter(t => t.progress === 100).reduce((s, t) => s + w(t), 0);
+                const overdue = due.filter(t => t.progress !== 100).length; // 마감 지났는데 미완료 = 지연
+                const achievement = totalW ? Math.round((doneW / totalW) * 100) : 0; // 달성률 (가중치 반영)
+                const onTime = dueW ? Math.round((dueDoneW / dueW) * 100) : null; // 기한준수율 (가중치 반영)
+                // 정량점수: 달성률 50% + 기한준수율 30% + 평균진행률 20% (기한 도래 태스크가 없으면 달성률 60% + 진행률 40%)
+                const quant = total === 0 ? null : Math.round(onTime === null
                     ? achievement * 0.6 + avgProgress * 0.4
                     : achievement * 0.5 + onTime * 0.3 + avgProgress * 0.2);
+                // 목표(MBO) 달성률
+                const empGoals = goals.filter(g => g.employeeId === emp.id && inPeriodYQ(g.year, g.quarter));
+                const goalRate = empGoals.length ? Math.round(empGoals.filter(g => g.achieved).length / empGoals.length * 100) : null;
+                // 정성평가 점수 (항목 평균을 100점 환산)
+                const empEvals = evals.filter(ev => ev.employeeId === emp.id && inPeriodYQ(ev.year, ev.quarter));
+                const evalValues = empEvals.flatMap(ev => Object.values(ev.scores || {}));
+                const qual = evalValues.length ? Math.round(evalValues.reduce((s, v) => s + v, 0) / evalValues.length / 5 * 100) : null;
+                // 종합점수 = 정량 50% + 목표 30% + 정성 20% (없는 항목은 가중치 재분배)
+                const parts: [number, number][] = [];
+                if (quant !== null) parts.push([quant, 0.5]);
+                if (goalRate !== null) parts.push([goalRate, 0.3]);
+                if (qual !== null) parts.push([qual, 0.2]);
+                const partsW = parts.reduce((s, [, pw]) => s + pw, 0);
+                const score = parts.length ? Math.round(parts.reduce((s, [v, pw]) => s + v * pw, 0) / partsW) : null;
                 const grade = score === null ? '-' : score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
-                return { emp, deptName: departmentMap.get(emp.departmentId)?.name || '-', total, done, avgProgress, overdue, achievement, onTime, score, grade };
+                return { emp, deptName: departmentMap.get(emp.departmentId)?.name || '-', total, done, avgProgress, overdue, achievement, onTime, quant, empGoals, goalRate, qual, score, grade };
             })
             .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [employees, allTasks, deptFilter, periodStart, periodEnd, departmentMap]);
+    }, [employees, allTasks, deptFilter, periodStart, periodEnd, departmentMap, goals, evals, inPeriodYQ]);
 
     const summary = useMemo(() => {
         const active = rows.filter(r => r.total > 0);
@@ -916,33 +993,82 @@ const ReportView: FC<{
                                 <th className="text-left px-4 py-3">이름</th>
                                 <th className="text-left px-4 py-3">부서</th>
                                 <th className="text-right px-4 py-3">담당</th>
-                                <th className="text-right px-4 py-3">완료</th>
                                 <th className="text-left px-4 py-3">달성률</th>
-                                <th className="text-left px-4 py-3">평균 진행률</th>
+                                <th className="text-left px-4 py-3">진행률</th>
                                 <th className="text-right px-4 py-3">지연</th>
-                                <th className="text-right px-4 py-3">기한준수율</th>
+                                <th className="text-right px-4 py-3">기한준수</th>
+                                <th className="text-right px-4 py-3">목표</th>
+                                <th className="text-right px-4 py-3">정성</th>
                                 <th className="text-right px-4 py-3">종합점수</th>
                                 <th className="text-center px-4 py-3">등급</th>
                             </tr>
                         </thead>
                         <tbody>
                             {rows.map((r, i) => (
-                                <tr key={r.emp.id} className={`border-b border-gray-100 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors ${r.total === 0 ? 'opacity-40' : ''}`}>
-                                    <td className="px-4 py-3 font-black text-gray-400 tabular-nums">{r.total > 0 ? i + 1 : '-'}</td>
-                                    <td className="px-4 py-3 font-black text-gray-900 dark:text-white">{r.emp.name}</td>
+                                <React.Fragment key={r.emp.id}>
+                                <tr onClick={() => { setExpandedEmpId(prev => prev === r.emp.id ? null : r.emp.id); setNewGoalTitle(''); }} className={`border-b border-gray-100 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer ${r.total === 0 && r.empGoals.length === 0 ? 'opacity-40' : ''} ${expandedEmpId === r.emp.id ? 'bg-indigo-500/5' : ''}`}>
+                                    <td className="px-4 py-3 font-black text-gray-400 tabular-nums">{r.score !== null ? i + 1 : '-'}</td>
+                                    <td className="px-4 py-3 font-black text-gray-900 dark:text-white"><span className="flex items-center gap-1.5">{r.emp.name}<ChevronDownIcon className={`h-3 w-3 text-gray-400 transition-transform ${expandedEmpId === r.emp.id ? 'rotate-180' : ''}`} /></span></td>
                                     <td className="px-4 py-3 text-xs font-bold text-gray-500">{r.deptName}</td>
                                     <td className="px-4 py-3 text-right font-bold tabular-nums">{r.total}</td>
-                                    <td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{r.done}</td>
                                     <td className="px-4 py-3">{r.total > 0 ? <MiniBar value={r.achievement} colorClass="bg-emerald-500" /> : <span className="text-xs text-gray-400">-</span>}</td>
                                     <td className="px-4 py-3">{r.total > 0 ? <MiniBar value={r.avgProgress} colorClass="bg-indigo-500" /> : <span className="text-xs text-gray-400">-</span>}</td>
                                     <td className={`px-4 py-3 text-right font-black tabular-nums ${r.overdue > 0 ? 'text-rose-500' : 'text-gray-400'}`}>{r.total > 0 ? r.overdue : '-'}</td>
                                     <td className="px-4 py-3 text-right font-bold tabular-nums">{r.onTime === null ? <span className="text-xs text-gray-400">-</span> : `${r.onTime}%`}</td>
+                                    <td className="px-4 py-3 text-right font-bold tabular-nums">{r.goalRate === null ? <span className="text-xs text-gray-400">-</span> : <span className="text-sky-600 dark:text-sky-400">{r.goalRate}%</span>}</td>
+                                    <td className="px-4 py-3 text-right font-bold tabular-nums">{r.qual === null ? <span className="text-xs text-gray-400">-</span> : <span className="text-fuchsia-600 dark:text-fuchsia-400">{r.qual}</span>}</td>
                                     <td className="px-4 py-3 text-right font-black tabular-nums text-lg">{r.score ?? '-'}</td>
                                     <td className="px-4 py-3 text-center"><span className={`inline-block min-w-[2rem] px-2 py-1 rounded-lg text-xs font-black border ${gradeColor(r.grade)}`}>{r.grade}</span></td>
                                 </tr>
+                                {expandedEmpId === r.emp.id && (
+                                <tr className="border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/20">
+                                    <td colSpan={12} className="px-4 py-4">
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                            {/* 분기 목표 (MBO) */}
+                                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-sky-500 mb-2">{curY}년 {curQ}분기 목표 (MBO)</p>
+                                                {goals.filter(g => g.employeeId === r.emp.id && g.year === curY && g.quarter === curQ).map(g => (
+                                                    <div key={g.id} className="flex items-center gap-2 group/goal">
+                                                        <button onClick={() => handleToggleGoal(g)} className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${g.achieved ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400'}`}>{g.achieved && '✓'}</button>
+                                                        <span className={`text-sm font-bold flex-grow ${g.achieved ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}>{g.title}</span>
+                                                        <button onClick={() => handleDeleteGoal(g.id)} className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover/goal:opacity-100 transition-all"><XMarkIcon className="h-4 w-4" /></button>
+                                                    </div>
+                                                ))}
+                                                {goals.filter(g => g.employeeId === r.emp.id && g.year === curY && g.quarter === curQ).length === 0 && (
+                                                    <p className="text-xs text-gray-400 font-medium">등록된 목표가 없습니다. 분기 초에 핵심 목표 2~3개를 등록하세요.</p>
+                                                )}
+                                                <div className="flex gap-2 pt-1">
+                                                    <input type="text" value={newGoalTitle} onChange={e => setNewGoalTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddGoal(r.emp.id); } }} placeholder="새 목표 입력" className="flex-grow bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:ring-1 focus:ring-sky-500 outline-none" />
+                                                    <button onClick={() => handleAddGoal(r.emp.id)} className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors"><PlusIcon className="h-4 w-4" /></button>
+                                                </div>
+                                            </div>
+                                            {/* 정성평가 */}
+                                            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-500 mb-2">{curY}년 {curQ}분기 정성평가 (관리자)</p>
+                                                {EVAL_ITEMS.map(([key, label]) => {
+                                                    const cur = evals.find(ev => ev.employeeId === r.emp.id && ev.year === curY && ev.quarter === curQ);
+                                                    const val = (cur?.scores || {})[key] || 0;
+                                                    return (
+                                                        <div key={key} className="flex items-center justify-between gap-3">
+                                                            <span className="text-sm font-bold text-gray-700 dark:text-gray-300 w-20 shrink-0">{label}</span>
+                                                            <div className="flex gap-1">
+                                                                {[1, 2, 3, 4, 5].map(n => (
+                                                                    <button key={n} onClick={() => handleEvalScore(r.emp.id, key, n)} className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${val >= n ? 'bg-fuchsia-500 text-white shadow' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-fuchsia-500/20'}`}>{n}</button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                <p className="text-[10px] text-gray-400 font-medium pt-1">항목별 1~5점 · 클릭 즉시 저장됩니다</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                )}
+                                </React.Fragment>
                             ))}
                             {rows.length === 0 && (
-                                <tr><td colSpan={11} className="px-4 py-10 text-center text-sm font-bold text-gray-400">표시할 직원이 없습니다.</td></tr>
+                                <tr><td colSpan={12} className="px-4 py-10 text-center text-sm font-bold text-gray-400">표시할 직원이 없습니다.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -952,9 +1078,10 @@ const ReportView: FC<{
             {/* 산정 기준 안내 */}
             <div className="bg-gray-100/70 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 font-medium space-y-1">
                 <p className="font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest text-[10px] mb-1.5">산정 기준</p>
-                <p>· <b>달성률</b> = 완료 태스크 ÷ 담당 태스크 · <b>기한준수율</b> = 마감이 지난 태스크 중 완료 비율 · <b>지연</b> = 마감이 지났는데 미완료</p>
-                <p>· <b>종합점수</b> = 달성률 50% + 기한준수율 30% + 평균 진행률 20% (마감 도래 태스크가 없으면 달성률 60% + 평균 진행률 40%)</p>
-                <p>· <b>등급</b> = S(90+) / A(80+) / B(70+) / C(60+) / D(60 미만) · 기간 필터는 태스크 마감일 기준입니다. 고과 반영 시 참고 자료로 활용하세요.</p>
+                <p>· 모든 태스크 지표는 <b>중요도 가중치</b>(상 3 / 중 2 / 하 1)를 반영해 계산합니다. <b>달성률</b> = 완료 가중치 ÷ 전체 가중치 · <b>기한준수</b> = 마감 지난 태스크 중 완료 비율 · <b>지연</b> = 마감 초과 미완료 건수</p>
+                <p>· <b>정량점수</b> = 달성률 50% + 기한준수 30% + 진행률 20% · <b>목표</b> = 분기 목표(MBO) 달성률 · <b>정성</b> = 관리자 평가(협업·책임감·업무품질, 1~5점) 100점 환산</p>
+                <p>· <b>종합점수</b> = 정량 50% + 목표 30% + 정성 20% (미입력 항목은 가중치를 재분배) · <b>등급</b> = S(90+) / A(80+) / B(70+) / C(60+) / D</p>
+                <p>· 행을 클릭하면 해당 직원의 분기 목표와 정성평가를 입력할 수 있습니다. 기간 필터는 태스크 마감일 기준이며, 고과 반영 시 참고 자료로 활용하세요.</p>
             </div>
         </div>
     );
@@ -1622,7 +1749,7 @@ const App: FC = () => {
         } catch (e) { console.error(e); alert('Error saving project'); }
     };
 
-const handleTaskSubmit = async (data: { name: string; employeeId: string; segments: { start: string; end: string }[]; description: string; color: string }) => {
+const handleTaskSubmit = async (data: { name: string; employeeId: string; segments: { start: string; end: string }[]; description: string; color: string; priority: number }) => {
         if (!taskModal.projectId) return;
         try {
             // 전체 기간 = 첫 일정 시작 ~ 마지막 일정 종료 (segments는 정렬되어 옴)
@@ -1636,6 +1763,7 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; segmen
                     startDate: start,
                     endDate: end,
                     segments: data.segments,
+                    priority: data.priority,
                     description: data.description,
                     color: data.color // 색상 정보 전달
                 });
@@ -1646,6 +1774,7 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; segmen
                     startDate: start,
                     endDate: end,
                     segments: data.segments,
+                    priority: data.priority,
                     description: data.description,
                     color: data.color // 색상 정보 전달
                 });

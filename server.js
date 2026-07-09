@@ -123,6 +123,46 @@ app.delete('/api/employees/:id', async (req, res) => {
   broadcastUpdate(); res.json({success:true});
 });
 
+// [평가: 분기별 개인 목표 (MBO)]
+app.get('/api/goals', async (req, res) => {
+  try { res.json(await prisma.goal.findMany({ orderBy: { createdAt: 'asc' } })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/goals', async (req, res) => {
+  try {
+    const { employeeId, year, quarter, title } = req.body;
+    const g = await prisma.goal.create({ data: { employeeId, year: parseInt(year), quarter: parseInt(quarter), title } });
+    broadcastUpdate(); res.json(g);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/goals/:id', async (req, res) => {
+  try {
+    const g = await prisma.goal.update({ where: { id: req.params.id }, data: { title: req.body.title, achieved: req.body.achieved } });
+    broadcastUpdate(); res.json(g);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/goals/:id', async (req, res) => {
+  try { await prisma.goal.delete({ where: { id: req.params.id } }); broadcastUpdate(); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// [평가: 분기별 관리자 정성평가]
+app.get('/api/evaluations', async (req, res) => {
+  try { res.json(await prisma.evaluation.findMany()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/evaluations', async (req, res) => {
+  try {
+    const { employeeId, year, quarter, scores } = req.body;
+    const ev = await prisma.evaluation.upsert({
+      where: { employeeId_year_quarter: { employeeId, year: parseInt(year), quarter: parseInt(quarter) } },
+      update: { scores },
+      create: { employeeId, year: parseInt(year), quarter: parseInt(quarter), scores }
+    });
+    broadcastUpdate(); res.json(ev);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // [Frontend Serving]
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

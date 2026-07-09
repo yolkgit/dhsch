@@ -27,11 +27,13 @@ model Department {
 }
 
 model Employee {
-  id           String      @id @default(uuid())
+  id           String       @id @default(uuid())
   name         String
-  departmentId String?     @map("department_id")
-  department   Department? @relation(fields: [departmentId], references: [id])
+  departmentId String?      @map("department_id")
+  department   Department?  @relation(fields: [departmentId], references: [id])
   tasks        Task[]
+  goals        Goal[]
+  evaluations  Evaluation[]
 
   @@index([departmentId], map: "employees_department_id_fkey")
   @@map("employees")
@@ -44,6 +46,7 @@ model Task {
   startDate   DateTime? @map("start_date") @db.Date
   endDate     DateTime? @map("end_date") @db.Date
   segments    Json?
+  priority    Int       @default(2) // 중요도: 3=상, 2=중, 1=하 (평가 가중치)
   color       String?   @default("bg-blue-500")
   employeeId  String?   @map("employee_id")
   progress    Int       @default(0)
@@ -62,4 +65,32 @@ model SystemSetting {
   value Json
 
   @@map("system_settings")
+}
+
+// 분기별 개인 목표 (MBO)
+model Goal {
+  id         String   @id @default(uuid())
+  employeeId String   @map("employee_id")
+  year       Int
+  quarter    Int
+  title      String
+  achieved   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("goals")
+}
+
+// 분기별 관리자 정성평가 (항목별 1~5점, scores JSON)
+model Evaluation {
+  id         String   @id @default(uuid())
+  employeeId String   @map("employee_id")
+  year       Int
+  quarter    Int
+  scores     Json
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year, quarter])
+  @@map("evaluations")
 }
