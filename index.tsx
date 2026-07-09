@@ -51,6 +51,12 @@ const CogIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+const ChartBarIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+);
+
 const Resizer: FC<{ onMouseDown: (e: React.MouseEvent) => void }> = ({ onMouseDown }) => (
     <div onMouseDown={onMouseDown} onClick={e => e.stopPropagation()} className="absolute top-0 right-0 h-full w-2.5 cursor-col-resize group z-20 flex justify-center items-center">
         <div className="w-px h-2/3 bg-transparent group-hover:bg-gray-500 transition-colors duration-200"></div>
@@ -961,10 +967,12 @@ const Header: FC<{
     viewStartDate: Date;
     setViewStartDate: React.Dispatch<React.SetStateAction<Date>>;
     onOpenSettings: () => void;
+    activeView: 'gantt' | 'report';
+    setActiveView: React.Dispatch<React.SetStateAction<'gantt' | 'report'>>;
     isOnline: boolean;
     isDarkMode: boolean;
     toggleDarkMode: () => void;
-}> = ({ departments, filter, setFilter, viewStartDate, setViewStartDate, onOpenSettings, isOnline, isDarkMode, toggleDarkMode }) => {
+}> = ({ departments, filter, setFilter, viewStartDate, setViewStartDate, onOpenSettings, activeView, setActiveView, isOnline, isDarkMode, toggleDarkMode }) => {
     const employeesInSelectedDept = useMemo(() => {
         if (filter.departmentId === 'all' || !departments) return [];
         return departments.find(d => d.id === filter.departmentId)?.employees || [];
@@ -999,6 +1007,9 @@ const Header: FC<{
                     <div className="flex items-center ml-2 gap-2">
                         <button onClick={toggleDarkMode} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-gray-200 dark:border-gray-700 hover:border-indigo-500/50 shadow-inner group">
                             {isDarkMode ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+                        </button>
+                        <button onClick={() => setActiveView(v => v === 'report' ? 'gantt' : 'report')} title="평가 리포트" className={`p-2.5 rounded-xl transition-all border shadow-inner ${activeView === 'report' ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-500/30' : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 border-gray-200 dark:border-gray-700 hover:border-indigo-500/50'}`}>
+                            <ChartBarIcon className="h-5 w-5" />
                         </button>
                         <button onClick={onOpenSettings} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-indigo-500/20 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-gray-200 dark:border-gray-700 hover:border-indigo-500/50 shadow-inner group">
                             <CogIcon className="h-5 w-5 group-hover:rotate-90 transition-transform duration-700" />
@@ -1780,16 +1791,13 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; segmen
                 viewStartDate={viewStartDate}
                 setViewStartDate={setViewStartDate}
                 onOpenSettings={handleOpenSettings}
+                activeView={activeView}
+                setActiveView={setActiveView}
                 isOnline={isOnline}
                 isDarkMode={isDarkMode}
                 toggleDarkMode={toggleDarkMode}
             />
             <main className="flex-grow p-2 sm:p-4 overflow-hidden flex flex-col">
-                {/* 뷰 전환 탭 */}
-                <div className="flex gap-1 mb-2 sm:mb-3 shrink-0">
-                    <button onClick={() => setActiveView('gantt')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeView === 'gantt' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-100 dark:bg-gray-800/60 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'}`}>일정</button>
-                    <button onClick={() => setActiveView('report')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeView === 'report' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-100 dark:bg-gray-800/60 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'}`}>평가 리포트</button>
-                </div>
                 {activeView === 'gantt' ? (
                 <GanttView
                     projects={filteredProjects}
