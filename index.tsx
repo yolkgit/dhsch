@@ -788,6 +788,172 @@ const ConfirmationModal: FC<{
 
 // --- Main Components ---
 
+// 개인별 평가지표 리포트 (달성률·기한준수율 등 고과 참고용)
+const ReportView: FC<{
+    projects: Project[];
+    departments: Department[];
+    employees: Employee[];
+    departmentMap: Map<string, Department>;
+}> = ({ projects, departments, employees, departmentMap }) => {
+    const [period, setPeriod] = useState<'all' | 'month' | 'quarter' | 'year'>('all');
+    const [deptFilter, setDeptFilter] = useState('all');
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    const { periodStart, periodEnd, periodLabel } = useMemo(() => {
+        const y = today.getFullYear(), m = today.getMonth();
+        if (period === 'month') return { periodStart: new Date(y, m, 1), periodEnd: new Date(y, m + 1, 0), periodLabel: `${y}년 ${m + 1}월` };
+        if (period === 'quarter') { const q = Math.floor(m / 3); return { periodStart: new Date(y, q * 3, 1), periodEnd: new Date(y, q * 3 + 3, 0), periodLabel: `${y}년 ${q + 1}분기` };
+        }
+        if (period === 'year') return { periodStart: new Date(y, 0, 1), periodEnd: new Date(y, 11, 31), periodLabel: `${y}년` };
+        return { periodStart: null as Date | null, periodEnd: null as Date | null, periodLabel: '전체 기간' };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [period]);
+
+    const allTasks = useMemo(() => projects.flatMap(p => p.tasks || []), [projects]);
+
+    const rows = useMemo(() => {
+        return employees
+            .filter(e => deptFilter === 'all' || e.departmentId === deptFilter)
+            .map(emp => {
+                // 마감일(endDate)이 기간 안에 있는 태스크 기준으로 집계
+                const tasks = allTasks.filter(t => {
+                    if (t.employeeId !== emp.id) return false;
+                    if (!periodStart || !periodEnd) return true;
+                    const end = new Date(t.endDate);
+                    return end >= periodStart && end <= periodEnd;
+                });
+                const total = tasks.length;
+                const done = tasks.filter(t => t.progress === 100).length;
+                const avgProgress = total ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / total) : 0;
+                const due = tasks.filter(t => new Date(t.endDate) < today); // 마감이 지난 태스크
+                const dueDone = due.filter(t => t.progress === 100).length;
+                const overdue = due.length - dueDone; // 마감 지났는데 미완료 = 지연
+                const achievement = total ? Math.round((done / total) * 100) : 0; // 달성률
+                const onTime = due.length ? Math.round((dueDone / due.length) * 100) : null; // 기한준수율 (마감 도래분 기준)
+                // 종합점수: 달성률 50% + 기한준수율 30% + 평균진행률 20% (기한 도래 태스크가 없으면 달성률 60% + 진행률 40%)
+                const score = total === 0 ? null : Math.round(onTime === null
+                    ? achievement * 0.6 + avgProgress * 0.4
+                    : achievement * 0.5 + onTime * 0.3 + avgProgress * 0.2);
+                const grade = score === null ? '-' : score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D';
+                return { emp, deptName: departmentMap.get(emp.departmentId)?.name || '-', total, done, avgProgress, overdue, achievement, onTime, score, grade };
+            })
+            .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [employees, allTasks, deptFilter, periodStart, periodEnd, departmentMap]);
+
+    const summary = useMemo(() => {
+        const active = rows.filter(r => r.total > 0);
+        const totalTasks = rows.reduce((s, r) => s + r.total, 0);
+        const totalDone = rows.reduce((s, r) => s + r.done, 0);
+        const totalOverdue = rows.reduce((s, r) => s + r.overdue, 0);
+        const avgScore = active.length ? Math.round(active.reduce((s, r) => s + (r.score || 0), 0) / active.length) : 0;
+        return { totalTasks, totalDone, totalOverdue, avgScore };
+    }, [rows]);
+
+    const gradeColor = (g: string) =>
+        g === 'S' ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/30'
+        : g === 'A' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
+        : g === 'B' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30'
+        : g === 'C' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
+        : g === 'D' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30'
+        : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+
+    const MiniBar: FC<{ value: number; colorClass: string }> = ({ value, colorClass }) => (
+        <div className="flex items-center gap-2">
+            <div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+                <div className={`h-full ${colorClass}`} style={{ width: `${value}%` }} />
+            </div>
+            <span className="text-xs font-black tabular-nums">{value}%</span>
+        </div>
+    );
+
+    return (
+        <div className="flex-grow overflow-y-auto custom-scrollbar space-y-4 pb-8">
+            {/* 필터 & 인쇄 */}
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="flex bg-gray-100 dark:bg-gray-800/80 rounded-xl p-1 border border-gray-200 dark:border-gray-700">
+                    {([['all', '전체'], ['year', '올해'], ['quarter', '분기'], ['month', '이번 달']] as const).map(([key, label]) => (
+                        <button key={key} onClick={() => setPeriod(key)} className={`px-4 py-2 text-xs font-black rounded-lg transition-all ${period === key ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}>{label}</button>
+                    ))}
+                </div>
+                <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 focus:outline-none appearance-none cursor-pointer">
+                    <option value="all">부서 전체</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <span className="text-xs font-bold text-gray-400 ml-1">기준: {periodLabel} 마감 태스크</span>
+                <button onClick={() => window.print()} className="ml-auto px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-black text-gray-600 dark:text-gray-300 transition-all">🖨 인쇄</button>
+            </div>
+
+            {/* 요약 카드 */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                    { label: '총 태스크', value: summary.totalTasks, color: 'text-gray-900 dark:text-white' },
+                    { label: '완료', value: summary.totalDone, color: 'text-emerald-600 dark:text-emerald-400' },
+                    { label: '지연', value: summary.totalOverdue, color: 'text-rose-600 dark:text-rose-400' },
+                    { label: '평균 종합점수', value: summary.avgScore, color: 'text-indigo-600 dark:text-indigo-400' },
+                ].map(c => (
+                    <div key={c.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">{c.label}</p>
+                        <p className={`text-2xl font-black tabular-nums ${c.color}`}>{c.value}</p>
+                    </div>
+                ))}
+            </div>
+
+            {/* 평가표 */}
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-200 dark:border-gray-800 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                <th className="text-left px-4 py-3">순위</th>
+                                <th className="text-left px-4 py-3">이름</th>
+                                <th className="text-left px-4 py-3">부서</th>
+                                <th className="text-right px-4 py-3">담당</th>
+                                <th className="text-right px-4 py-3">완료</th>
+                                <th className="text-left px-4 py-3">달성률</th>
+                                <th className="text-left px-4 py-3">평균 진행률</th>
+                                <th className="text-right px-4 py-3">지연</th>
+                                <th className="text-right px-4 py-3">기한준수율</th>
+                                <th className="text-right px-4 py-3">종합점수</th>
+                                <th className="text-center px-4 py-3">등급</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((r, i) => (
+                                <tr key={r.emp.id} className={`border-b border-gray-100 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors ${r.total === 0 ? 'opacity-40' : ''}`}>
+                                    <td className="px-4 py-3 font-black text-gray-400 tabular-nums">{r.total > 0 ? i + 1 : '-'}</td>
+                                    <td className="px-4 py-3 font-black text-gray-900 dark:text-white">{r.emp.name}</td>
+                                    <td className="px-4 py-3 text-xs font-bold text-gray-500">{r.deptName}</td>
+                                    <td className="px-4 py-3 text-right font-bold tabular-nums">{r.total}</td>
+                                    <td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{r.done}</td>
+                                    <td className="px-4 py-3">{r.total > 0 ? <MiniBar value={r.achievement} colorClass="bg-emerald-500" /> : <span className="text-xs text-gray-400">-</span>}</td>
+                                    <td className="px-4 py-3">{r.total > 0 ? <MiniBar value={r.avgProgress} colorClass="bg-indigo-500" /> : <span className="text-xs text-gray-400">-</span>}</td>
+                                    <td className={`px-4 py-3 text-right font-black tabular-nums ${r.overdue > 0 ? 'text-rose-500' : 'text-gray-400'}`}>{r.total > 0 ? r.overdue : '-'}</td>
+                                    <td className="px-4 py-3 text-right font-bold tabular-nums">{r.onTime === null ? <span className="text-xs text-gray-400">-</span> : `${r.onTime}%`}</td>
+                                    <td className="px-4 py-3 text-right font-black tabular-nums text-lg">{r.score ?? '-'}</td>
+                                    <td className="px-4 py-3 text-center"><span className={`inline-block min-w-[2rem] px-2 py-1 rounded-lg text-xs font-black border ${gradeColor(r.grade)}`}>{r.grade}</span></td>
+                                </tr>
+                            ))}
+                            {rows.length === 0 && (
+                                <tr><td colSpan={11} className="px-4 py-10 text-center text-sm font-bold text-gray-400">표시할 직원이 없습니다.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* 산정 기준 안내 */}
+            <div className="bg-gray-100/70 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400 font-medium space-y-1">
+                <p className="font-black text-gray-600 dark:text-gray-300 uppercase tracking-widest text-[10px] mb-1.5">산정 기준</p>
+                <p>· <b>달성률</b> = 완료 태스크 ÷ 담당 태스크 · <b>기한준수율</b> = 마감이 지난 태스크 중 완료 비율 · <b>지연</b> = 마감이 지났는데 미완료</p>
+                <p>· <b>종합점수</b> = 달성률 50% + 기한준수율 30% + 평균 진행률 20% (마감 도래 태스크가 없으면 달성률 60% + 평균 진행률 40%)</p>
+                <p>· <b>등급</b> = S(90+) / A(80+) / B(70+) / C(60+) / D(60 미만) · 기간 필터는 태스크 마감일 기준입니다. 고과 반영 시 참고 자료로 활용하세요.</p>
+            </div>
+        </div>
+    );
+};
+
 const Header: FC<{
     departments: Department[];
     filter: { departmentId: string; employeeId: string };
@@ -1296,6 +1462,7 @@ const App: FC = () => {
 
     // Modals
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [activeView, setActiveView] = useState<'gantt' | 'report'>('gantt');
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [projectModal, setProjectModal] = useState<{ open: boolean; project: Project | null }>({ open: false, project: null });
     const [taskModal, setTaskModal] = useState<{ open: boolean; task: Task | null; projectId: string | null }>({ open: false, task: null, projectId: null });
@@ -1618,6 +1785,12 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; segmen
                 toggleDarkMode={toggleDarkMode}
             />
             <main className="flex-grow p-2 sm:p-4 overflow-hidden flex flex-col">
+                {/* 뷰 전환 탭 */}
+                <div className="flex gap-1 mb-2 sm:mb-3 shrink-0">
+                    <button onClick={() => setActiveView('gantt')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeView === 'gantt' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-100 dark:bg-gray-800/60 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'}`}>일정</button>
+                    <button onClick={() => setActiveView('report')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeView === 'report' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-gray-100 dark:bg-gray-800/60 text-gray-500 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-gray-700'}`}>평가 리포트</button>
+                </div>
+                {activeView === 'gantt' ? (
                 <GanttView
                     projects={filteredProjects}
                     timelineDates={timelineDates}
@@ -1640,6 +1813,14 @@ const handleTaskSubmit = async (data: { name: string; employeeId: string; segmen
                     onReorderTasks={handleReorderTasks}
                     uiSettings={uiSettings}
                 />
+                ) : (
+                <ReportView
+                    projects={projects}
+                    departments={departments}
+                    employees={employees}
+                    departmentMap={departmentMap}
+                />
+                )}
             </main>
 
             {/* Modals */}
